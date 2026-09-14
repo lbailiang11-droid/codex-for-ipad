@@ -1454,7 +1454,7 @@ final class CodexWorkspaceModel: ObservableObject {
         timelineByThread[thread.id] = [
             TimelineItem(id: "u1", kind: .user, title: "You", body: "Make Codex updates clean and stable without losing the iPad-specific work.", detail: "", state: .completed, timestamp: .now.addingTimeInterval(-180)),
             TimelineItem(id: "p1", kind: .plan, title: "Plan", body: "Separate upstream pins, protocol compatibility, rootfs packaging, and native UI verification.", detail: "", state: .completed, timestamp: .now.addingTimeInterval(-150)),
-            TimelineItem(id: "c1", kind: .command, title: "Command", body: "cargo zigbuild --target i686-unknown-linux-musl -p codex-app-server", detail: "Compiling codex-app-server…\nFinished release build", state: .completed, timestamp: .now.addingTimeInterval(-120)),
+            TimelineItem(id: "c1", kind: .command, title: "Command", body: "cargo zigbuild --target i586-unknown-linux-musl -p codex-app-server", detail: "Compiling codex-app-server…\nFinished release build", state: .completed, timestamp: .now.addingTimeInterval(-120)),
             TimelineItem(id: "a1", kind: .agent, title: "Codex", body: "The compatibility gate passes against the pinned protocol. I’ve isolated Codex updates behind a manifest and verified pull requests.", detail: "", state: .completed, timestamp: .now.addingTimeInterval(-60))
         ]
         plan = [
@@ -1467,7 +1467,7 @@ final class CodexWorkspaceModel: ObservableObject {
         diff --git a/Dependencies/upstreams.json b/Dependencies/upstreams.json
         +  \"codex\": {
         +    \"revision\": \"6bd3f5e3db82…\",
-        +    \"target\": \"i686-unknown-linux-musl\"
+        +    \"target\": \"i586-unknown-linux-musl\"
         +  }
         """
         runtimeLog = [
