@@ -40,7 +40,7 @@ docker run --rm --platform linux/386 \
         status=0
         apk --root /target --arch x86 --no-cache add \
             bash ca-certificates coreutils curl findutils git jq less \
-            openssh-client patch python3 ripgrep || status=$?
+            openssh-client openrc patch python3 ripgrep || status=$?
         if ! chown -R "$HOST_UID:$HOST_GID" /target; then
             exit 1
         fi
@@ -67,7 +67,7 @@ jq -n \
     --arg codexRevision "$codex_revision" \
     --arg ishRevision "$ish_revision" \
     --arg alpineRelease "$alpine_release" \
-    --arg target "i686-unknown-linux-musl" \
+    --arg target "i586-unknown-linux-musl" \
     '{schemaVersion: 1, codexRevision: $codexRevision, ishRevision: $ishRevision, alpineRelease: $alpineRelease, target: $target}' \
     > "$root_dir/usr/local/share/codexpad/runtime.json"
 sha256sum "$CODEX_BINARY" \
