@@ -45,7 +45,7 @@ index 23b5774f5..d17ec6172 100644
  whoami = { workspace = true }
  
 +# Use portable crypto implementations in the 32-bit musl guest used by iSH.
-+[target.i686-unknown-linux-musl.dependencies]
++[target.i586-unknown-linux-musl.dependencies]
 +blake3 = { version = "1", features = ["pure"] }
 +openssl-sys = { workspace = true, features = ["vendored"] }
 +
