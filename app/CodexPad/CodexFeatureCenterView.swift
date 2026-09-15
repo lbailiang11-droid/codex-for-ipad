@@ -45,7 +45,7 @@ struct CodexFeatureCenterView: View {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Experimental Code Mode").font(.subheadline.weight(.medium))
-                            Text("Rusty V8 has no i686-musl build")
+                            Text("Code Mode support is experimental on the ARM64 runtime")
                                 .font(.caption2)
                                 .foregroundStyle(CodexPalette.secondaryInk)
                         }

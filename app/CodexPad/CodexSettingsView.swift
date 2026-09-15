@@ -224,7 +224,7 @@ struct CodexSettingsView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
-            LabeledContent("Runtime", value: "iSH – Alpine x86")
+            LabeledContent("Runtime", value: "iSH – Alpine ARM64")
             LabeledContent("Transport", value: "Guest loopback")
         } header: {
             Text("Workspace")

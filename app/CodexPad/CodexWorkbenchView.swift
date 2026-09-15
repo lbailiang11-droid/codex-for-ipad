@@ -178,7 +178,7 @@ struct CodexWorkbenchView: View {
                 Label("On-device Linux", systemImage: "cpu")
                     .font(.headline)
                     .foregroundStyle(CodexPalette.teal)
-                Text("iSH emulates 32-bit x86 Linux in this app. Codex, shell commands, Git, and project files stay on the iPad.")
+                Text("iSH runs an ARM64 Alpine Linux guest in this app. Codex, shell commands, Git, and project files stay on the iPad.")
                     .font(.callout)
                     .foregroundStyle(CodexPalette.secondaryInk)
                 Divider()
