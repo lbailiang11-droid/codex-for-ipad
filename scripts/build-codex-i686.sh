@@ -20,6 +20,7 @@ install -m 0644 \
 # __atomic_is_lock_free, which Zig's musl runtime does not export. This
 # upstream-supported guard selects OpenSSL's existing RWLock fallback instead.
 export CFLAGS="${CFLAGS:+$CFLAGS }-DBROKEN_CLANG_ATOMICS"
+export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C no-vectorize-loops -C no-vectorize-slp"
 
 cargo zigbuild \
   --locked \
