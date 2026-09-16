@@ -1,0 +1,60 @@
+﻿name: ARM64 runtime smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - exp/codexpad-on-arm64
+    paths:
+      - .github/workflows/arm64-runtime-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  app-server-smoke:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+
+    steps:
+      - name: Confirm native ARM64 runner
+        shell: bash
+        run: |
+          set -euxo pipefail
+          uname -a
+          test "$(uname -m)" = "aarch64"
+
+      - name: Download and verify official app-server
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL "https://github.com/openai/codex/releases/download/rust-v0.154.0/codex-app-server-aarch64-unknown-linux-musl.tar.gz" -o app-server.tar.gz
+          echo "68d30a1cce7ce070d52e0855bcd1ec27d6c4d8e64ab9dfac5b1a09ec08de094f  app-server.tar.gz" | sha256sum -c -
+          tar -xzf app-server.tar.gz
+          chmod +x codex-app-server-aarch64-unknown-linux-musl
+          file codex-app-server-aarch64-unknown-linux-musl
+
+      - name: CLI smoke test
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./codex-app-server-aarch64-unknown-linux-musl --version
+          ./codex-app-server-aarch64-unknown-linux-musl --help > /tmp/help.txt
+          head -80 /tmp/help.txt
+
+      - name: Startup smoke test
+        shell: bash
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex-home
+        run: |
+          set -euxo pipefail
+          mkdir -p "$CODEX_HOME"
+          ./codex-app-server-aarch64-unknown-linux-musl --listen ws://127.0.0.1:4500 > /tmp/app-server.out 2> /tmp/app-server.err &
+          pid=$!
+          sleep 3
+          cat /tmp/app-server.out || true
+          cat /tmp/app-server.err || true
+          kill -0 "$pid"
+          ss -ltn | grep -q ":4500"
+          kill "$pid"
+          wait "$pid" || true
