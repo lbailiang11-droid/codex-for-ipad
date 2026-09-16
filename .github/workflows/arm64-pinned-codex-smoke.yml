@@ -1,0 +1,78 @@
+﻿name: ARM64 pinned Codex smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - exp/codexpad-on-arm64
+    paths:
+      - .github/workflows/arm64-pinned-codex-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-codex:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+
+    env:
+      CODEX_REVISION: 6bd3f5e3db8275c10c7e4bbcc1342c32a89b7eee
+      RUST_TOOLCHAIN: 1.95.0
+      CODEX_TARGET: aarch64-unknown-linux-musl
+      CARGO_TARGET_DIR: ${{ github.workspace }}/artifacts/cargo-target
+      CARGO_HOME: ${{ github.workspace }}/.codex-local/cargo
+      RUSTUP_HOME: ${{ github.workspace }}/.codex-local/rustup
+
+    steps:
+      - name: Fetch pinned Codex
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p upstream/codex
+          git -C upstream/codex init
+          git -C upstream/codex remote add origin https://github.com/openai/codex.git
+          git -C upstream/codex fetch --depth=1 origin "$CODEX_REVISION"
+          git -C upstream/codex checkout --detach FETCH_HEAD
+          test "$(git -C upstream/codex rev-parse HEAD)" = "$CODEX_REVISION"
+
+      - name: Install Rust
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --target "$CODEX_TARGET"
+          echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
+        with:
+          version: 0.14.1
+
+      - name: Install cargo-zigbuild
+        shell: bash
+        run: cargo install cargo-zigbuild --locked
+
+      - name: Build pinned ARM64 app-server
+        working-directory: upstream/codex/codex-rs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cargo zigbuild --locked --release --target "$CODEX_TARGET" -p codex-app-server --bin codex-app-server
+
+      - name: Run pinned ARM64 app-server
+        shell: bash
+        run: |
+          set -euxo pipefail
+          binary="$CARGO_TARGET_DIR/$CODEX_TARGET/release/codex-app-server"
+          file "$binary"
+          readelf -h "$binary" | grep -q 'Machine:.*AArch64'
+          "$binary" --version
+          "$binary" --help > /tmp/help.txt
+          "$binary" --listen ws://127.0.0.1:4500 > /tmp/server.out 2> /tmp/server.err &
+          pid=$!
+          sleep 3
+          cat /tmp/server.err || true
+          kill -0 "$pid"
+          ss -ltn | grep -q ':4500'
+          kill "$pid"
+          wait "$pid" || true
