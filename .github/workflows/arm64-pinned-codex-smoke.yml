@@ -101,3 +101,18 @@ jobs:
           ss -ltn | grep -q ':4500'
           kill "$pid"
           wait "$pid" || true
+      - name: Package ARM64 app-server
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p artifacts/package
+          install -m 0755 "$CARGO_TARGET_DIR/$CODEX_TARGET/release/codex-app-server" artifacts/package/codex-app-server
+          tar -C artifacts/package -czf "$GITHUB_WORKSPACE/artifacts/codex-app-server-aarch64-musl.tar.gz" codex-app-server
+
+      - name: Upload ARM64 app-server artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-app-server-aarch64-musl
+          path: artifacts/codex-app-server-aarch64-musl.tar.gz
+          if-no-files-found: error
+          retention-days: 7
