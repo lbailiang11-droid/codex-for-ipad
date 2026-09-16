@@ -1,4 +1,4 @@
-﻿name: ARM64 pinned Codex smoke
+name: ARM64 pinned Codex smoke
 
 on:
   workflow_dispatch:
@@ -36,6 +36,29 @@ jobs:
           git -C upstream/codex checkout --detach FETCH_HEAD
           test "$(git -C upstream/codex rev-parse HEAD)" = "$CODEX_REVISION"
 
+      - name: Apply ARM64 musl compatibility
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          test -f upstream/codex/codex-rs/code-mode/Cargo.toml
+          test -f upstream/codex/codex-rs/code-mode/src/lib.rs
+
+          git -C upstream/codex apply --check "$GITHUB_WORKSPACE/patches/codex-arm64-musl.patch"
+          git -C upstream/codex apply "$GITHUB_WORKSPACE/patches/codex-arm64-musl.patch"
+
+          install -m 0644 \
+            "$GITHUB_WORKSPACE/compat/codex-arm64/code-mode/service_unavailable.rs" \
+            upstream/codex/codex-rs/code-mode/src/service_unavailable.rs
+
+          install -m 0644 \
+            "$GITHUB_WORKSPACE/compat/codex-arm64/code-mode/v8_init_unavailable.rs" \
+            upstream/codex/codex-rs/code-mode/src/v8_init_unavailable.rs
+
+          test -s upstream/codex/codex-rs/code-mode/src/service_unavailable.rs
+          test -s upstream/codex/codex-rs/code-mode/src/v8_init_unavailable.rs
+
+          git -C upstream/codex diff --check
       - name: Install Rust
         shell: bash
         run: |
