@@ -25,6 +25,8 @@ jobs:
       RUSTUP_HOME: ${{ github.workspace }}/.codex-local/rustup
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Fetch pinned Codex
         shell: bash
         run: |
