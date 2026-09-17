@@ -7,6 +7,9 @@ on:
       - exp/codexpad-on-arm64
     paths:
       - ".github/workflows/arm64-ios-unsigned.yml"
+      - "app/AppARM64.xcconfig"
+      - "iSH.xcodeproj/project.pbxproj"
+      - "app/CodexPad/**"
 
 jobs:
   build:
