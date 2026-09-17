@@ -14,3 +14,9 @@ OTHER_LDFLAGS = $(inherited) $(MESON_BUILD_DIR)/libish.a $(MESON_BUILD_DIR)/libi
 // Header search paths needed for sources compiled directly in this target
 // (previously compiled in libiSHApp, which used AppLib.xcconfig)
 HEADER_SEARCH_PATHS = $(inherited) $(SRCROOT) $(SRCROOT)/deps/libarchive/libarchive
+
+// Swift/Objective-C bridge for CodexPad in the ARM64 app target
+CLANG_ENABLE_MODULES = YES
+DEFINES_MODULE = YES
+PRODUCT_MODULE_NAME = CodexPadApp
+SWIFT_OBJC_INTERFACE_HEADER_NAME = CodexPadApp-Swift.h

@@ -316,6 +316,20 @@
 		BBFB2C7E259026C200545EAB /* libish_emu.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBFB2C5B2590257E00545EAB /* libish_emu.a */; };
 		BBFB2CEC2590296B00545EAB /* libish_emu.a in Frameworks */ = {isa = PBXBuildFile; fileRef = BBFB2C5B2590257E00545EAB /* libish_emu.a */; };
 		BBFB55662158644C00DFE6DE /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = BBFB55652158644C00DFE6DE /* libresolv.tbd */; };
+		CE1300000000000000000001 /* CodexJSON.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2000000000000000000001 /* CodexJSON.swift */; };
+		CE1300000000000000000002 /* CodexRPC.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2000000000000000000002 /* CodexRPC.swift */; };
+		CE1300000000000000000003 /* CodexModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2000000000000000000003 /* CodexModels.swift */; };
+		CE1300000000000000000004 /* CodexWorkspaceModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2000000000000000000004 /* CodexWorkspaceModel.swift */; };
+		CE1300000000000000000005 /* CodexTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2000000000000000000005 /* CodexTheme.swift */; };
+		CE1300000000000000000006 /* CodexComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2000000000000000000006 /* CodexComponents.swift */; };
+		CE1300000000000000000007 /* CodexConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2000000000000000000007 /* CodexConversationView.swift */; };
+		CE1300000000000000000008 /* CodexWorkbenchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2000000000000000000008 /* CodexWorkbenchView.swift */; };
+		CE1300000000000000000009 /* CodexSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2000000000000000000009 /* CodexSettingsView.swift */; };
+		CE130000000000000000000A /* CodexPadRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD200000000000000000000A /* CodexPadRootView.swift */; };
+		CE130000000000000000000B /* CodexPadHostController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD200000000000000000000B /* CodexPadHostController.swift */; };
+		CE130000000000000000000C /* CodexPadLinkAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD200000000000000000000C /* CodexPadLinkAnchor.swift */; };
+		CE130000000000000000000D /* CodexFeatureCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD200000000000000000000D /* CodexFeatureCatalog.swift */; };
+		CE130000000000000000000E /* CodexFeatureCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD200000000000000000000E /* CodexFeatureCenterView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -2417,6 +2431,20 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CE1300000000000000000001 /* CodexJSON.swift in Sources */,
+				CE1300000000000000000002 /* CodexRPC.swift in Sources */,
+				CE1300000000000000000003 /* CodexModels.swift in Sources */,
+				CE1300000000000000000004 /* CodexWorkspaceModel.swift in Sources */,
+				CE1300000000000000000005 /* CodexTheme.swift in Sources */,
+				CE1300000000000000000006 /* CodexComponents.swift in Sources */,
+				CE1300000000000000000007 /* CodexConversationView.swift in Sources */,
+				CE1300000000000000000008 /* CodexWorkbenchView.swift in Sources */,
+				CE1300000000000000000009 /* CodexSettingsView.swift in Sources */,
+				CE130000000000000000000A /* CodexPadRootView.swift in Sources */,
+				CE130000000000000000000B /* CodexPadHostController.swift in Sources */,
+				CE130000000000000000000C /* CodexPadLinkAnchor.swift in Sources */,
+				CE130000000000000000000D /* CodexFeatureCatalog.swift in Sources */,
+				CE130000000000000000000E /* CodexFeatureCenterView.swift in Sources */,
 				AA000020AF96D90D00FFB7A4 /* main.m in Sources */,
 				AA000021AF96D90D00FFB7A4 /* LocationDevice.m in Sources */,
 				AA000022AF96D90D00FFB7A4 /* iOSFS.m in Sources */,
