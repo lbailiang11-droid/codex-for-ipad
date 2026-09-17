@@ -1,0 +1,77 @@
+name: ARM64 iOS unsigned
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - exp/codexpad-on-arm64
+    paths:
+      - ".github/workflows/arm64-ios-unsigned.yml"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install build tools
+        run: |
+          brew install meson ninja
+
+      - name: Verify ARM64 target
+        run: |
+          set -euxo pipefail
+          xcodebuild \
+            -project iSH.xcodeproj \
+            -target iSH-ARM64 \
+            -configuration Release \
+            -sdk iphoneos \
+            -showBuildSettings | grep -E "GUEST_ARCH = arm64|PRODUCT_NAME = iSH ARM64"
+
+      - name: Build ARM64 CodexPad
+        run: |
+          set -euxo pipefail
+          xcodebuild \
+            -project iSH.xcodeproj \
+            -target iSH-ARM64 \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$GITHUB_WORKSPACE/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build
+
+      - name: Verify ARM64 rootfs and package IPA
+        run: |
+          set -euxo pipefail
+
+          APP="$(find "$GITHUB_WORKSPACE/build" -type d -name 'iSH ARM64.app' -print -quit)"
+          test -n "$APP"
+          test -f "$APP/root.tar.gz"
+
+          mkdir -p rootfs-check
+          tar -xzf "$APP/root.tar.gz" -C rootfs-check bin/busybox
+          file rootfs-check/bin/busybox
+          file rootfs-check/bin/busybox | grep -Ei "aarch64|ARM64"
+
+          mkdir -p package/Payload
+          cp -R "$APP" package/Payload/CodexPad.app
+
+          cd package
+          zip -qry "$GITHUB_WORKSPACE/CodexPad-ARM64-unsigned.ipa" Payload
+
+      - name: Upload ARM64 CodexPad
+        uses: actions/upload-artifact@v4
+        with:
+          name: CodexPad-ARM64-unsigned
+          path: CodexPad-ARM64-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
