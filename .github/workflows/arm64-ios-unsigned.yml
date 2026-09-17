@@ -22,7 +22,7 @@ jobs:
 
       - name: Install build tools
         run: |
-          brew install meson ninja
+          brew install ninja lld llvm meson
 
       - name: Verify ARM64 target
         run: |
