@@ -107,7 +107,10 @@ jobs:
       - name: Build ARM64 TLS probe with a fixed fake authorization code
         working-directory: upstream/codex/codex-rs
         shell: bash
-        run: cargo zigbuild --locked --release --target "$CODEX_TARGET" -p codex-http-client --bin custom_ca_probe
+        run: |
+          # Standalone http-client lacks the full app-server graph's vendored OpenSSL feature.
+          cargo zigbuild --locked --release --target "$CODEX_TARGET" \
+            -p codex-http-client --bin custom_ca_probe --features reqwest/native-tls-vendored
 
       - name: Package TLS probe before the full app-server build
         shell: bash
