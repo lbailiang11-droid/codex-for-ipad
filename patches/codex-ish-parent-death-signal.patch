@@ -1,0 +1,25 @@
+# Source: https://github.com/openai/codex/issues/40454
+# Base: openai/codex@6bd3f5e3db8275c10c7e4bbcc1342c32a89b7eee
+# CodexPad ARM64 musl compatibility only: iSH returns EINVAL for PR_SET_PDEATHSIG.
+# This fallback does not provide automatic cleanup when the parent exits.
+
+diff --git a/codex-rs/utils/pty/src/process_group.rs b/codex-rs/utils/pty/src/process_group.rs
+--- a/codex-rs/utils/pty/src/process_group.rs
++++ b/codex-rs/utils/pty/src/process_group.rs
+@@ -26,7 +26,15 @@
+ /// avoid a race where the parent exits between fork and exec.
+ pub fn set_parent_death_signal(parent_pid: libc::pid_t) -> io::Result<()> {
+     if unsafe { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) } == -1 {
+-        return Err(io::Error::last_os_error());
++        let err = io::Error::last_os_error();
++        // This CodexPad build runs under iSH, which does not implement PDEATHSIG.
++        // Return before the parent-PID guard: no signal was armed, and iSH may
++        // report a worker-thread parent ID that differs from the process ID.
++        #[cfg(all(target_arch = "aarch64", target_os = "linux", target_env = "musl"))]
++        if err.raw_os_error() == Some(libc::EINVAL) {
++            return Ok(());
++        }
++        return Err(err);
+     }
+ 
+     if unsafe { libc::getppid() } != parent_pid {

@@ -11,10 +11,15 @@ on:
       - patches/codex-arm64-musl.patch
       - patches/codex-rustls-provider-compat.patch
       - patches/codex-token-exchange-diagnostics.patch
+      - patches/codex-ish-parent-death-signal.patch
       - compat/codex-arm64/**
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   pinned-codex:
@@ -69,6 +74,8 @@ jobs:
           git -C upstream/codex apply "$GITHUB_WORKSPACE/patches/codex-rustls-provider-compat.patch"
           git -C upstream/codex apply --check "$GITHUB_WORKSPACE/patches/codex-token-exchange-diagnostics.patch"
           git -C upstream/codex apply "$GITHUB_WORKSPACE/patches/codex-token-exchange-diagnostics.patch"
+          git -C upstream/codex apply --check "$GITHUB_WORKSPACE/patches/codex-ish-parent-death-signal.patch"
+          git -C upstream/codex apply "$GITHUB_WORKSPACE/patches/codex-ish-parent-death-signal.patch"
 
           git -C upstream/codex diff --check
       - name: Install Rust
@@ -83,6 +90,11 @@ jobs:
         shell: bash
         run: cargo test --locked -p codex-utils-rustls-provider --tests
 
+      - name: Test native pipe execution and process cleanup
+        working-directory: upstream/codex/codex-rs
+        shell: bash
+        run: cargo test --locked -p codex-utils-pty --lib pipe_
+
       - name: Install Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
         with:
@@ -92,6 +104,33 @@ jobs:
         shell: bash
         run: cargo install cargo-zigbuild --version 0.23.4 --locked
 
+      - name: Build ARM64 TLS probe with a fixed fake authorization code
+        working-directory: upstream/codex/codex-rs
+        shell: bash
+        run: cargo zigbuild --locked --release --target "$CODEX_TARGET" -p codex-http-client --bin custom_ca_probe
+
+      - name: Package TLS probe before the full app-server build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p artifacts/probe
+          install -m 0755 "$CARGO_TARGET_DIR/$CODEX_TARGET/release/custom_ca_probe" artifacts/probe/custom_ca_probe
+          strip --strip-all artifacts/probe/custom_ca_probe
+          artifacts/probe/custom_ca_probe
+          printf 'Codex source: %s\nCodexPad build: %s\nTarget: %s\n' \
+            "$CODEX_REVISION" "$GITHUB_SHA" "$CODEX_TARGET" > artifacts/probe/BUILD.txt
+          (cd artifacts/probe && sha256sum custom_ca_probe > SHA256SUMS)
+          tar -C artifacts/probe -czf "$GITHUB_WORKSPACE/artifacts/codex-custom-ca-probe-aarch64-musl.tar.gz" \
+            custom_ca_probe BUILD.txt SHA256SUMS
+
+      - name: Upload TLS probe for early iPad diagnosis
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-custom-ca-probe-aarch64-musl
+          path: artifacts/codex-custom-ca-probe-aarch64-musl.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Build pinned ARM64 app-server
         id: build
         working-directory: upstream/codex/codex-rs
@@ -99,11 +138,6 @@ jobs:
         run: |
           set -euxo pipefail
           cargo zigbuild --locked --release --target "$CODEX_TARGET" -p codex-app-server --bin codex-app-server
-
-      - name: Build ARM64 TLS probe with a fixed fake authorization code
-        working-directory: upstream/codex/codex-rs
-        shell: bash
-        run: cargo zigbuild --locked --release --target "$CODEX_TARGET" -p codex-http-client --bin custom_ca_probe
 
       - name: Run pinned ARM64 app-server
         shell: bash
