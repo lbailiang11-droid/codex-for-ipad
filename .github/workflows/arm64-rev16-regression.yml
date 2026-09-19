@@ -58,6 +58,7 @@ jobs:
           printf 'REV16 vector: 4 cases passed\n' > artifacts/expected.txt
 
       - name: Build both versions of the actual iSH emulator
+        id: build
         run: |
           set -euxo pipefail
           # Use the repository's normal macOS CLI, including its real guest
@@ -85,11 +86,18 @@ jobs:
           set -e
           printf '%s\n' "$status" > artifacts/parent.exit-status
           cat artifacts/parent.stdout artifacts/parent.stderr
-          test "$status" -eq 132
-          grep -q 'illegal instruction' artifacts/parent.stderr
-          echo 'Pinned parent reproduces guest SIGILL (exit 132).'
+          printf 'Parent host exit status: %s\n' "$status"
+          # This guest runs as PID 1. kernel/exit.c calls halt_system(), which
+          # exits the host with 0 before the CLI exit hook can map SIGILL to
+          # 132. Require the precise missing instruction and no PASS output;
+          # host status alone cannot distinguish a guest crash from success.
+          test "$status" -eq 0
+          test ! -s artifacts/parent.stdout
+          grep -Eq 'illegal instruction at 0x[0-9a-f]+: insn=0x0e201821' artifacts/parent.stderr
+          echo 'Pinned parent reproduces the precise guest REV16 SIGILL.'
 
       - name: Confirm all four REV16 cases pass inside fixed iSH
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           set -euo pipefail
           set +e
@@ -100,8 +108,10 @@ jobs:
           set -e
           printf '%s\n' "$status" > artifacts/fixed.exit-status
           cat artifacts/fixed.stdout artifacts/fixed.stderr
+          printf 'Fixed host exit status: %s\n' "$status"
           test "$status" -eq 0
           diff -u artifacts/expected.txt artifacts/fixed.stdout
+          ! grep -q 'illegal instruction' artifacts/fixed.stderr
           echo 'Fixed emulator passes the same guest binary.'
 
       - name: Preserve regression evidence
