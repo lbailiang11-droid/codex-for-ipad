@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   regression:
-    runs-on: ubuntu-24.04-arm
+    runs-on: macos-15
     timeout-minutes: 20
     env:
       # Pin the failing parent so later CI-only commits still reproduce the bug.
@@ -39,13 +39,11 @@ jobs:
       - name: Check out the fix
         uses: actions/checkout@v4
 
-      - name: Install native ARM64 build dependencies
+      - name: Install native Apple Silicon build dependencies
         run: |
           set -euxo pipefail
-          test "$(uname -m)" = aarch64
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            clang lld meson ninja-build pkg-config libsqlite3-dev
+          test "$(uname -m)" = arm64
+          brew install ninja lld llvm meson coreutils
 
       - name: Prepare the failing parent and a shared guest test
         run: |
@@ -62,46 +60,15 @@ jobs:
       - name: Build both versions of the actual iSH emulator
         run: |
           set -euxo pipefail
-          # main.c currently contains an Apple-only crash handler. Use the same
-          # small Linux launcher for both revisions, retaining the real ELF
-          # loader, kernel, decoder, gadgets, memory and syscall implementations.
-          # The ARM64 guest is never run directly on the runner's native CPU.
-          cat > "$RUNNER_TEMP/rev16-launcher.c" <<'EOF'
-          #include <stdio.h>
-          #include <string.h>
-          #include <unistd.h>
-          #include "kernel/task.h"
-          #include "xX_main_Xx.h"
-
-          int main(int argc, char *const argv[]) {
-              if (dup2(STDERR_FILENO, 666) < 0) {
-                  perror("redirect iSH kernel log");
-                  return 125;
-              }
-              const char envp[] = "HOME=/root\0PATH=/bin:/usr/bin\0";
-              int err = xX_main_Xx(argc, argv, envp);
-              if (err != 0) {
-                  fprintf(stderr, "iSH initialization failed: %d\n", err);
-                  return 125;
-              }
-              task_run_current();
-              return 125;
-          }
-          EOF
-          cp "$RUNNER_TEMP/rev16-launcher.c" artifacts/
+          # Use the repository's normal macOS CLI, including its real guest
+          # loader, kernel, decoder and ARM64 gadgets. main.c routes kernel log
+          # fd 666 to stderr. Neither source tree receives compatibility patches.
           build_emulator() {
             local source_dir="$1" build_dir="$2"
             meson setup "$build_dir" "$source_dir" \
               -Dguest_arch=arm64 -Dengine=asbestos -Dkernel=ish \
               -Dlog_handler=dprintf -Dno_crlf=true --buildtype=release
-            ninja -C "$build_dir" libish.a libish_emu.a libfakefs.a
-            clang -DGUEST_ARM64=1 -DENGINE_ASBESTOS=1 \
-              -DLOG_HANDLER_DPRINTF=1 -I"$source_dir" -I"$build_dir" \
-              "$RUNNER_TEMP/rev16-launcher.c" \
-              -Wl,--start-group "$build_dir/libish.a" \
-              "$build_dir/libish_emu.a" "$build_dir/libfakefs.a" \
-              -Wl,--end-group -lsqlite3 -lm -ldl -lrt -pthread \
-              -o "$build_dir/ish-regression"
+            ninja -C "$build_dir" ish
           }
           build_emulator "$RUNNER_TEMP/rev16-parent" "$RUNNER_TEMP/rev16-parent-build"
           build_emulator "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/build-rev16"
@@ -110,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          timeout 30s "$RUNNER_TEMP/rev16-parent-build/ish-regression" \
+          gtimeout 30s "$RUNNER_TEMP/rev16-parent-build/ish" \
             -r "$GITHUB_WORKSPACE/guest-root" /arm64-rev16 \
             > artifacts/parent.stdout 2> artifacts/parent.stderr
           status=$?
@@ -125,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          timeout 30s "$GITHUB_WORKSPACE/build-rev16/ish-regression" \
+          gtimeout 30s "$GITHUB_WORKSPACE/build-rev16/ish" \
             -r "$GITHUB_WORKSPACE/guest-root" /arm64-rev16 \
             > artifacts/fixed.stdout 2> artifacts/fixed.stderr
           status=$?
