@@ -1,0 +1,83 @@
+# Source: https://github.com/jacklv-coder/codex/commit/13391630aef4b5eadd9532d8bbbf870f32890bd5
+# Upstream issue: https://github.com/openai/codex/issues/39186
+# Base used by this build: openai/codex@6bd3f5e3db8275c10c7e4bbcc1342c32a89b7eee
+# Exact source commit change hunks; keeps normal rustls certificate verification.
+
+diff --git a/codex-rs/utils/rustls-provider/src/lib.rs b/codex-rs/utils/rustls-provider/src/lib.rs
+--- a/codex-rs/utils/rustls-provider/src/lib.rs
++++ b/codex-rs/utils/rustls-provider/src/lib.rs
+@@ -1,39 +1,18 @@
+ use std::sync::Once;
+ 
+-const REQUIRED_SIGNATURE_SCHEME: rustls::SignatureScheme =
+-    rustls::SignatureScheme::ECDSA_NISTP521_SHA512;
+-
+ /// Ensures a process-wide rustls crypto provider is installed.
+ ///
+ /// rustls cannot auto-select a provider when both `ring` and `aws-lc-rs`
+ /// features are enabled in the dependency graph.
+ pub fn ensure_rustls_crypto_provider() {
+     static RUSTLS_PROVIDER_INIT: Once = Once::new();
+     RUSTLS_PROVIDER_INIT.call_once(|| {
+-        // aws-lc-rs supports a broader WebPKI signature set than ring, including
+-        // ECDSA P-521/SHA-512 certs used by some enterprise TLS proxies.
+-        if rustls::crypto::aws_lc_rs::default_provider()
+-            .install_default()
+-            .is_err()
+-        {
+-            // Preserve the previous best-effort behavior for embedded hosts that
+-            // install a process-global provider before Codex can install one.
+-            return;
+-        }
+-
+-        let Some(provider) = rustls::crypto::CryptoProvider::get_default() else {
+-            panic!("aws-lc-rs rustls crypto provider should be installed");
+-        };
+-        assert!(
+-            provider_supports_required_signature_scheme(provider),
+-            "installed rustls crypto provider must support {REQUIRED_SIGNATURE_SCHEME:?}"
+-        );
++        // Prefer aws-lc-rs' broader WebPKI signature set. Installation remains
++        // best-effort because another provider may already be installed, and
++        // some embedded Linux environments expose a reduced aws-lc algorithm
++        // set. Keep the provider installed instead of terminating the process;
++        // rustls will still reject a certificate that actually requires an
++        // unsupported verification scheme.
++        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+     });
+ }
+-
+-fn provider_supports_required_signature_scheme(provider: &rustls::crypto::CryptoProvider) -> bool {
+-    provider
+-        .signature_verification_algorithms
+-        .supported_schemes()
+-        .contains(&REQUIRED_SIGNATURE_SCHEME)
+-}
+diff --git a/codex-rs/utils/rustls-provider/tests/provider.rs b/codex-rs/utils/rustls-provider/tests/provider.rs
+--- a/codex-rs/utils/rustls-provider/tests/provider.rs
++++ b/codex-rs/utils/rustls-provider/tests/provider.rs
+@@ -1,16 +1,20 @@
+ use codex_utils_rustls_provider::ensure_rustls_crypto_provider;
+ 
+ #[test]
+-fn ensure_provider_installs_ecdsa_p521_sha512_support() {
++fn ensure_provider_installs_the_available_aws_lc_algorithms() {
++    let expected_schemes = rustls::crypto::aws_lc_rs::default_provider()
++        .signature_verification_algorithms
++        .supported_schemes();
++
+     ensure_rustls_crypto_provider();
+ 
+     let Some(provider) = rustls::crypto::CryptoProvider::get_default() else {
+         panic!("rustls provider should be installed");
+     };
+-    assert!(
++    assert_eq!(
+         provider
+             .signature_verification_algorithms
+-            .supported_schemes()
+-            .contains(&rustls::SignatureScheme::ECDSA_NISTP521_SHA512)
++            .supported_schemes(),
++        expected_schemes
+     );
+ }

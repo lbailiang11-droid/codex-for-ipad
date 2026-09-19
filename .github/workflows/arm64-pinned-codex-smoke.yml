@@ -5,8 +5,13 @@ on:
   push:
     branches:
       - exp/codexpad-on-arm64
+      - codex/fix-arm64-rev16
     paths:
       - .github/workflows/arm64-pinned-codex-smoke.yml
+      - patches/codex-arm64-musl.patch
+      - patches/codex-rustls-provider-compat.patch
+      - patches/codex-token-exchange-diagnostics.patch
+      - compat/codex-arm64/**
 
 permissions:
   contents: read
@@ -60,6 +65,11 @@ jobs:
           test -s upstream/codex/codex-rs/code-mode/src/service_unavailable.rs
           test -s upstream/codex/codex-rs/code-mode/src/v8_init_unavailable.rs
 
+          git -C upstream/codex apply --check "$GITHUB_WORKSPACE/patches/codex-rustls-provider-compat.patch"
+          git -C upstream/codex apply "$GITHUB_WORKSPACE/patches/codex-rustls-provider-compat.patch"
+          git -C upstream/codex apply --check "$GITHUB_WORKSPACE/patches/codex-token-exchange-diagnostics.patch"
+          git -C upstream/codex apply "$GITHUB_WORKSPACE/patches/codex-token-exchange-diagnostics.patch"
+
           git -C upstream/codex diff --check
       - name: Install Rust
         shell: bash
@@ -68,6 +78,11 @@ jobs:
           curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --target "$CODEX_TARGET"
           echo "$CARGO_HOME/bin" >> "$GITHUB_PATH"
 
+      - name: Test native rustls provider installation and preservation
+        working-directory: upstream/codex/codex-rs
+        shell: bash
+        run: cargo test --locked -p codex-utils-rustls-provider --tests
+
       - name: Install Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29
         with:
@@ -75,14 +90,20 @@ jobs:
 
       - name: Install cargo-zigbuild
         shell: bash
-        run: cargo install cargo-zigbuild --locked
+        run: cargo install cargo-zigbuild --version 0.23.4 --locked
 
       - name: Build pinned ARM64 app-server
+        id: build
         working-directory: upstream/codex/codex-rs
         shell: bash
         run: |
           set -euxo pipefail
           cargo zigbuild --locked --release --target "$CODEX_TARGET" -p codex-app-server --bin codex-app-server
+
+      - name: Build ARM64 TLS probe with a fixed fake authorization code
+        working-directory: upstream/codex/codex-rs
+        shell: bash
+        run: cargo zigbuild --locked --release --target "$CODEX_TARGET" -p codex-http-client --bin custom_ca_probe
 
       - name: Run pinned ARM64 app-server
         shell: bash
@@ -107,12 +128,35 @@ jobs:
           set -euxo pipefail
           mkdir -p artifacts/package
           install -m 0755 "$CARGO_TARGET_DIR/$CODEX_TARGET/release/codex-app-server" artifacts/package/codex-app-server
-          tar -C artifacts/package -czf "$GITHUB_WORKSPACE/artifacts/codex-app-server-aarch64-musl.tar.gz" codex-app-server
+          install -m 0755 "$CARGO_TARGET_DIR/$CODEX_TARGET/release/custom_ca_probe" artifacts/package/custom_ca_probe
+          # Strip only the installable copy; retain the original ELF for symbolication.
+          strip --strip-all artifacts/package/codex-app-server artifacts/package/custom_ca_probe
+          artifacts/package/codex-app-server --version
+          # Without CODEX_CUSTOM_CA_PROBE_URL this only constructs the TLS client.
+          artifacts/package/custom_ca_probe
+          file artifacts/package/codex-app-server artifacts/package/custom_ca_probe
+          printf 'Codex source: %s\nCodexPad build: %s\nTarget: %s\n' \
+            "$CODEX_REVISION" "$GITHUB_SHA" "$CODEX_TARGET" > artifacts/package/BUILD.txt
+          sha256sum patches/codex-*.patch >> artifacts/package/BUILD.txt
+          (cd artifacts/package && sha256sum codex-app-server custom_ca_probe > SHA256SUMS)
+          tar -C artifacts/package -czf "$GITHUB_WORKSPACE/artifacts/codex-app-server-aarch64-musl.tar.gz" \
+            codex-app-server custom_ca_probe BUILD.txt SHA256SUMS
 
       - name: Upload ARM64 app-server artifact
         uses: actions/upload-artifact@v4
         with:
           name: codex-app-server-aarch64-musl
           path: artifacts/codex-app-server-aarch64-musl.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload unstripped ARM64 app-server for diagnosis
+        if: always() && steps.build.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-app-server-aarch64-musl-debug
+          path: |
+            artifacts/cargo-target/aarch64-unknown-linux-musl/release/codex-app-server
+            artifacts/cargo-target/aarch64-unknown-linux-musl/release/custom_ca_probe
           if-no-files-found: error
           retention-days: 7
