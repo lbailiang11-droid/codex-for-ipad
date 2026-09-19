@@ -67,6 +67,7 @@ jobs:
             local source_dir="$1" build_dir="$2"
             meson setup "$build_dir" "$source_dir" \
               -Dguest_arch=arm64 -Dengine=asbestos -Dkernel=ish \
+              -Dc_args=-Dposix_spawn_file_actions_addchdir=posix_spawn_file_actions_addchdir_np \
               -Dlog_handler=dprintf -Dno_crlf=true --buildtype=release
             ninja -C "$build_dir" ish
           }
@@ -110,6 +111,7 @@ jobs:
           name: arm64-rev16-regression
           path: |
             artifacts/
+            guest-root/arm64-rev16
             build-rev16/meson-logs/
             ${{ runner.temp }}/rev16-parent-build/meson-logs/
           if-no-files-found: warn
