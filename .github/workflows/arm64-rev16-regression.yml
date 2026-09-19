@@ -1,0 +1,149 @@
+name: ARM64 REV16 emulator regression
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/fix-arm64-rev16
+    paths:
+      - .github/workflows/arm64-rev16-regression.yml
+      - asbestos/**
+      - emu/**
+      - kernel/**
+      - fs/**
+      - platform/**
+      - util/**
+      - vdso/arm64/**
+      - meson.build
+      - meson_options.txt
+      - xX_main_Xx.h
+      - tests/manual/arm64-rev16.S
+      - tests/manual/arm64-rev16.sh
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      # Pin the failing parent so later CI-only commits still reproduce the bug.
+      BASELINE_REVISION: 2ede58913b56a899945752d3002a9c068666e52c
+      CC: clang
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Check out the fix
+        uses: actions/checkout@v4
+
+      - name: Install native ARM64 build dependencies
+        run: |
+          set -euxo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang lld meson ninja-build pkg-config libsqlite3-dev
+
+      - name: Prepare the failing parent and a shared guest test
+        run: |
+          set -euxo pipefail
+          mkdir -p artifacts guest-root/dev/pts guest-root/proc
+          git fetch --no-tags --depth=1 origin "$BASELINE_REVISION"
+          git worktree add --detach "$RUNNER_TEMP/rev16-parent" "$BASELINE_REVISION"
+          git rev-parse HEAD > artifacts/fixed-revision.txt
+          git -C "$RUNNER_TEMP/rev16-parent" rev-parse HEAD > artifacts/parent-revision.txt
+          sh tests/manual/arm64-rev16.sh "$GITHUB_WORKSPACE/guest-root/arm64-rev16"
+          sha256sum guest-root/arm64-rev16 > artifacts/guest-sha256.txt
+          printf 'REV16 vector: 4 cases passed\n' > artifacts/expected.txt
+
+      - name: Build both versions of the actual iSH emulator
+        run: |
+          set -euxo pipefail
+          # main.c currently contains an Apple-only crash handler. Use the same
+          # small Linux launcher for both revisions, retaining the real ELF
+          # loader, kernel, decoder, gadgets, memory and syscall implementations.
+          # The ARM64 guest is never run directly on the runner's native CPU.
+          cat > "$RUNNER_TEMP/rev16-launcher.c" <<'EOF'
+          #include <stdio.h>
+          #include <string.h>
+          #include <unistd.h>
+          #include "kernel/task.h"
+          #include "xX_main_Xx.h"
+
+          int main(int argc, char *const argv[]) {
+              if (dup2(STDERR_FILENO, 666) < 0) {
+                  perror("redirect iSH kernel log");
+                  return 125;
+              }
+              const char envp[] = "HOME=/root\0PATH=/bin:/usr/bin\0";
+              int err = xX_main_Xx(argc, argv, envp);
+              if (err != 0) {
+                  fprintf(stderr, "iSH initialization failed: %d\n", err);
+                  return 125;
+              }
+              task_run_current();
+              return 125;
+          }
+          EOF
+          cp "$RUNNER_TEMP/rev16-launcher.c" artifacts/
+          build_emulator() {
+            local source_dir="$1" build_dir="$2"
+            meson setup "$build_dir" "$source_dir" \
+              -Dguest_arch=arm64 -Dengine=asbestos -Dkernel=ish \
+              -Dlog_handler=dprintf -Dno_crlf=true --buildtype=release
+            ninja -C "$build_dir" libish.a libish_emu.a libfakefs.a
+            clang -DGUEST_ARM64=1 -DENGINE_ASBESTOS=1 \
+              -DLOG_HANDLER_DPRINTF=1 -I"$source_dir" -I"$build_dir" \
+              "$RUNNER_TEMP/rev16-launcher.c" \
+              -Wl,--start-group "$build_dir/libish.a" \
+              "$build_dir/libish_emu.a" "$build_dir/libfakefs.a" \
+              -Wl,--end-group -lsqlite3 -lm -ldl -lrt -pthread \
+              -o "$build_dir/ish-regression"
+          }
+          build_emulator "$RUNNER_TEMP/rev16-parent" "$RUNNER_TEMP/rev16-parent-build"
+          build_emulator "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/build-rev16"
+
+      - name: Confirm the parent rejects REV16 inside iSH
+        run: |
+          set -euo pipefail
+          set +e
+          timeout 30s "$RUNNER_TEMP/rev16-parent-build/ish-regression" \
+            -r "$GITHUB_WORKSPACE/guest-root" /arm64-rev16 \
+            > artifacts/parent.stdout 2> artifacts/parent.stderr
+          status=$?
+          set -e
+          printf '%s\n' "$status" > artifacts/parent.exit-status
+          cat artifacts/parent.stdout artifacts/parent.stderr
+          test "$status" -eq 132
+          grep -q 'illegal instruction' artifacts/parent.stderr
+          echo 'Pinned parent reproduces guest SIGILL (exit 132).'
+
+      - name: Confirm all four REV16 cases pass inside fixed iSH
+        run: |
+          set -euo pipefail
+          set +e
+          timeout 30s "$GITHUB_WORKSPACE/build-rev16/ish-regression" \
+            -r "$GITHUB_WORKSPACE/guest-root" /arm64-rev16 \
+            > artifacts/fixed.stdout 2> artifacts/fixed.stderr
+          status=$?
+          set -e
+          printf '%s\n' "$status" > artifacts/fixed.exit-status
+          cat artifacts/fixed.stdout artifacts/fixed.stderr
+          test "$status" -eq 0
+          diff -u artifacts/expected.txt artifacts/fixed.stdout
+          echo 'Fixed emulator passes the same guest binary.'
+
+      - name: Preserve regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: arm64-rev16-regression
+          path: |
+            artifacts/
+            build-rev16/meson-logs/
+            ${{ runner.temp }}/rev16-parent-build/meson-logs/
+          if-no-files-found: warn
+          retention-days: 14
