@@ -11,6 +11,7 @@ on:
       - "app/AppARM64.xcconfig"
       - "iSH.xcodeproj/project.pbxproj"
       - "app/CodexPad/**"
+      - "app/Assets.xcassets/CodexPadAppIcon.appiconset/**"
       - "tests/codexpad_connection/**"
       - "asbestos/guest-arm64/**"
 

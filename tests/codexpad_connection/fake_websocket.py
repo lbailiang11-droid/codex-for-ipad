@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import socket
+import socketserver
 import struct
 import threading
 import time
@@ -14,6 +15,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class FixtureServer(ThreadingHTTPServer):
     daemon_threads = True
+
+    def server_bind(self):
+        # HTTPServer otherwise performs a reverse-DNS lookup even for loopback;
+        # hosted macOS runners may wait longer than our whole test budget.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "localhost"
+        self.server_port = self.server_address[1]
 
     def __init__(self):
         super().__init__(("127.0.0.1", 0), FixtureHandler)

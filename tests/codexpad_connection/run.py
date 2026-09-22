@@ -38,6 +38,7 @@ def main():
         # Xcode's first compilation can warm module caches for over 30 seconds.
         # Bound the actual network regression separately from compiler startup.
         deadline = time.monotonic() + 30
+        print("Compiled RPC regression; starting loopback fixture", flush=True)
         port_file = scratch / "port"
         fixture = subprocess.Popen([
             sys.executable, str(suite / "fake_websocket.py"), "--port-file", str(port_file),
@@ -49,6 +50,7 @@ def main():
                     raise RuntimeError("WebSocket fixture exited before listening")
                 time.sleep(0.025)
             port = int(port_file.read_text(encoding="ascii"))
+            print("Fixture ready; running RPC regression", flush=True)
             subprocess.run([str(executable), str(port)], check=True, timeout=remaining())
         finally:
             fixture.terminate()
