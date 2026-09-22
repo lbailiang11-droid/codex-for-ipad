@@ -80,6 +80,8 @@ final class CodexWorkspaceModel: ObservableObject {
     let rpc: CodexRPCClient
     private let demoMode: Bool
     private var didStart = false
+    private var connectionRecoveryTask: Task<Void, Never>?
+    private var isRestoringConnection = false
     private var isDesktopComposerEngaged = false
     private let linkedFolderGuestPath = "/root/workspaces/codexpad-files"
 
@@ -120,6 +122,9 @@ final class CodexWorkspaceModel: ObservableObject {
         }
         rpc.inboundHandler = { [weak self] inbound in
             self?.handle(inbound)
+        }
+        rpc.connectionFailureHandler = { [weak self] message in
+            self?.connectionDidFail(message)
         }
     }
 
@@ -170,34 +175,68 @@ final class CodexWorkspaceModel: ObservableObject {
     }
 
     func connectToLocalEngine() async {
+        await startConnectionRecovery().value
+    }
+
+    private func startConnectionRecovery() -> Task<Void, Never> {
+        if let connectionRecoveryTask { return connectionRecoveryTask }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            defer { self.connectionRecoveryTask = nil }
+            await self.recoverConnection()
+        }
+        connectionRecoveryTask = task
+        return task
+    }
+
+    private func connectionDidFail(_ message: String) {
+        guard didStart, !demoMode else { return }
+        enginePhase = .offline(message: "The local Codex service disconnected. Reconnecting…")
+        isTurnRunning = false
+        activeTurnID = nil
+        // Approval request IDs belong to the closed WebSocket, not its replacement.
+        pendingRequests.removeAll()
+        appendRuntime("Engine connection lost: \(message)")
+        _ = startConnectionRecovery()
+    }
+
+    private func recoverConnection() async {
         enginePhase = .starting
         errorBanner = nil
-        for attempt in 1...10 {
+        isRestoringConnection = true
+        defer { isRestoringConnection = false }
+        var attempt = 0
+        while !Task.isCancelled {
+            attempt += 1
             enginePhase = .connecting(attempt: attempt)
             do {
                 try await rpc.connect()
+                let generation = rpc.connectionID
                 enginePhase = .ready
                 appendRuntime("Connected to Codex app-server on guest loopback")
                 await refreshAccount()
                 await refreshModels()
                 await refreshCollaborationModes()
                 await restoreLinkedFolderState()
-                await refreshThreads()
+                await refreshThreads(resumeSelectedThread: true)
+                guard rpc.state == .connected, rpc.connectionID == generation else {
+                    throw CodexRPCError(code: nil, message: "Connection changed while restoring the workspace")
+                }
                 return
             } catch {
+                if Task.isCancelled { return }
                 appendRuntime("Engine probe \(attempt) failed: \(error.localizedDescription)")
-                if attempt < 10 {
-                    try? await Task.sleep(for: .milliseconds(Int64(350 + attempt * 180)))
-                }
+                enginePhase = .offline(message: "Waiting for the local Codex service to restart…")
+                // Keep recovery alive through a slow guest restart, with a bounded backoff.
+                let delay = min(10_000, 500 * (1 << min(attempt - 1, 5)))
+                do { try await Task.sleep(for: .milliseconds(Int64(delay))) } catch { return }
             }
         }
-        enginePhase = .offline(
-            message: "The local Codex service did not become ready. Open Terminal to inspect the guest runtime."
-        )
     }
 
-    func refreshThreads() async {
+    func refreshThreads(resumeSelectedThread: Bool = false) async {
         guard enginePhase.isReady else { return }
+        let generation = rpc.connectionID
         do {
             let response = try await rpc.request(
                 method: "thread/list",
@@ -208,6 +247,7 @@ final class CodexWorkspaceModel: ObservableObject {
                     "sortDirection": .string("desc")
                 ])
             )
+            guard rpc.connectionID == generation else { return }
             let records = response["data"]?.arrayValue?.compactMap(parseThread) ?? []
             threads = records
             if selectedThreadID == nil {
@@ -215,6 +255,8 @@ final class CodexWorkspaceModel: ObservableObject {
                 if let id = selectedThreadID {
                     await resumeThread(id)
                 }
+            } else if resumeSelectedThread, let selectedThreadID {
+                await resumeThread(selectedThreadID)
             } else {
                 await loadDirectory(selectedThread?.cwd ?? workspacePath)
             }
@@ -568,12 +610,13 @@ final class CodexWorkspaceModel: ObservableObject {
 
     func resumeThread(_ id: String) async {
         guard enginePhase.isReady else { return }
+        let generation = rpc.connectionID
         do {
             let response = try await rpc.request(
                 method: "thread/resume",
                 params: .object(["threadId": .string(id)])
             )
-            guard let rawThread = response["thread"] else { return }
+            guard rpc.connectionID == generation, let rawThread = response["thread"] else { return }
             var cwd = workspacePath
             if let record = parseThread(rawThread) {
                 upsertThread(record)
@@ -589,6 +632,8 @@ final class CodexWorkspaceModel: ObservableObject {
                 turn["items"]?.arrayValue?.compactMap(parseTimelineItem) ?? []
             }
             selectedThreadID = id
+            activeTurnID = turns.last(where: { $0["status"]?.stringValue == "inProgress" })?["id"]?.stringValue
+            isTurnRunning = activeTurnID != nil || parseActivity(rawThread["status"]) == .running
             await loadDirectory(cwd)
         } catch {
             report(error, context: "Could not resume the thread")
@@ -654,15 +699,18 @@ final class CodexWorkspaceModel: ObservableObject {
     }
 
     func sendComposer() async {
-        let text = composerText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !isTurnRunning else { return }
+        let draft = composerText
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard enginePhase.isReady, !isRestoringConnection, !text.isEmpty, !isTurnRunning else { return }
         var threadID = selectedThreadID
         if threadID == nil {
             threadID = await createThread()
         }
         guard let threadID else { return }
+        guard enginePhase.isReady, !isRestoringConnection else { return }
 
-        composerText = ""
+        let generation = rpc.connectionID
+        if composerText == draft { composerText = "" }
         requestComposerFocus()
         let clientID = UUID().uuidString
         upsertTimeline(
@@ -708,11 +756,17 @@ final class CodexWorkspaceModel: ObservableObject {
                 method: "turn/start",
                 params: .object(params)
             )
+            guard rpc.connectionID == generation, selectedThreadID == threadID else { return }
             activeTurnID = response["turn"]?["id"]?.stringValue
         } catch {
-            isTurnRunning = false
-            setThreadActivity(.failed, id: threadID)
-            report(error, context: "Could not start the turn")
+            // A transport failure cannot tell us whether turn/start reached the server.
+            // Keep the text available for review, without overwriting a newer draft.
+            if composerText.isEmpty { composerText = draft }
+            if rpc.connectionID == generation {
+                if selectedThreadID == threadID { isTurnRunning = false }
+                setThreadActivity(.failed, id: threadID)
+            }
+            report(error, context: "Send status is unconfirmed. Check the thread history before sending again; the message was not retried")
         }
     }
 
@@ -950,13 +1004,17 @@ final class CodexWorkspaceModel: ObservableObject {
                 setThreadActivity(parseActivity(params["status"]), id: threadID)
             }
         case "turn/started":
-            activeTurnID = params["turn"]?["id"]?.stringValue
-            isTurnRunning = true
+            if threadID == selectedThreadID {
+                activeTurnID = params["turn"]?["id"]?.stringValue
+                isTurnRunning = true
+            }
             if let threadID { setThreadActivity(.running, id: threadID) }
         case "turn/completed":
-            isTurnRunning = false
-            activeTurnID = nil
-            requestComposerFocus()
+            if threadID == selectedThreadID {
+                isTurnRunning = false
+                activeTurnID = nil
+                requestComposerFocus()
+            }
             if let threadID { setThreadActivity(.idle, id: threadID) }
             if let items = params["turn"]?["items"]?.arrayValue, let threadID {
                 for item in items.compactMap(parseTimelineItem) {

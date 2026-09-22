@@ -11,6 +11,7 @@ on:
       - "app/AppARM64.xcconfig"
       - "iSH.xcodeproj/project.pbxproj"
       - "app/CodexPad/**"
+      - "tests/codexpad_connection/**"
       - "asbestos/guest-arm64/**"
 
 jobs:
@@ -24,6 +25,9 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+
+      - name: Verify connection recovery
+        run: python3 tests/codexpad_connection/run.py
 
       - name: Install build tools
         run: |
