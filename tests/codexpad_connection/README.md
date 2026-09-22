@@ -11,8 +11,8 @@ This compiles the production `CodexRPC.swift` and `CodexJSON.swift` directly wit
 calls a model or external endpoint. No iPad, signing identity, packages, or Xcode
 project changes are required.
 
-The runner caps compilation plus execution at 30 seconds and always stops its
-fixture process. The tests normally spend about 9 seconds executing:
+The runner allows 120 seconds for compilation and caps test execution at 30
+seconds. It always stops its fixture process. Execution normally takes about 9 seconds:
 
 - Withhold the JSON-RPC initialize response after a real WebSocket upgrade; check
   that the handshake fails near its 8-second deadline and reports failure once.

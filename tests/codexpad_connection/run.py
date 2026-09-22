@@ -34,7 +34,10 @@ def main():
             str(root / "app/CodexPad/CodexJSON.swift"),
             str(root / "app/CodexPad/CodexRPC.swift"),
             str(suite / "ConnectionRegression.swift"), "-o", str(executable),
-        ], check=True, timeout=remaining())
+        ], check=True, timeout=120)
+        # Xcode's first compilation can warm module caches for over 30 seconds.
+        # Bound the actual network regression separately from compiler startup.
+        deadline = time.monotonic() + 30
         port_file = scratch / "port"
         fixture = subprocess.Popen([
             sys.executable, str(suite / "fake_websocket.py"), "--port-file", str(port_file),
