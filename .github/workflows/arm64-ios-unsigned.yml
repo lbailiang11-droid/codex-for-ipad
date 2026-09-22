@@ -16,6 +16,7 @@ on:
       - "asbestos/guest-arm64/**"
       - "kernel/futex.c"
       - "fs/poll.c"
+      - "fs/sock.c"
 
 jobs:
   build:

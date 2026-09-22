@@ -19,6 +19,7 @@ on:
       - xX_main_Xx.h
       - tests/manual/arm64-rev16.S
       - tests/manual/arm64-rev16.sh
+      - tests/manual/arm64-socketpair-race.S
 
 permissions:
   contents: read
@@ -113,6 +114,27 @@ jobs:
           diff -u artifacts/expected.txt artifacts/fixed.stdout
           ! grep -q 'illegal instruction' artifacts/fixed.stderr
           echo 'Fixed emulator passes the same guest binary.'
+
+      - name: Verify concurrent socket creation and close
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          clang --target=aarch64-linux-musl -nostdlib -static -fuse-ld=lld \
+            -Wl,-e,_start tests/manual/arm64-socketpair-race.S -o guest-root/socketpair-race
+          set +e
+          gtimeout -k 2s 15s "$RUNNER_TEMP/rev16-parent-build/ish" \
+            -r "$GITHUB_WORKSPACE/guest-root" /socketpair-race \
+            > artifacts/socketpair-parent.stdout 2> artifacts/socketpair-parent.stderr
+          parent_status=$?
+          set -e
+          printf 'Parent socketpair status: %s\n' "$parent_status"
+          test "$parent_status" -eq 124 -o "$parent_status" -eq 137
+          ! grep -q 'PASS:' artifacts/socketpair-parent.stdout
+          gtimeout -k 2s 15s "$GITHUB_WORKSPACE/build-rev16/ish" \
+            -r "$GITHUB_WORKSPACE/guest-root" /socketpair-race \
+            > artifacts/socketpair-fixed.stdout 2> artifacts/socketpair-fixed.stderr
+          cat artifacts/socketpair-fixed.stdout artifacts/socketpair-fixed.stderr
+          grep -q '^PASS: 16000 concurrent socketpair/close cycles$' artifacts/socketpair-fixed.stdout
 
       - name: Preserve regression evidence
         if: always()

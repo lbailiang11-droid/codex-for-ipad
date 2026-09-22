@@ -19,10 +19,12 @@ const struct fd_ops socket_fdops;
 
 static lock_t peer_lock = LOCK_INITIALIZER;
 
-static fd_t sock_fd_create(int sock_fd, int domain, int type, int protocol) {
+// On success, the unpublished fd owns sock_fd. Allocation failure leaves it
+// with the caller, so each host descriptor has exactly one cleanup owner.
+static struct fd *sock_fd_alloc(int sock_fd, int domain, int type, int protocol) {
     struct fd *fd = adhoc_fd_create(&socket_fdops);
     if (fd == NULL)
-        return _ENOMEM;
+        return NULL;
     fd->stat.mode = S_IFSOCK | 0666;
     fd->real_fd = sock_fd;
     fd->socket.domain = domain;
@@ -32,7 +34,30 @@ static fd_t sock_fd_create(int sock_fd, int domain, int type, int protocol) {
         cond_init(&fd->socket.unix_got_peer);
         list_init(&fd->socket.unix_scm);
     }
+    return fd;
+}
+
+// Consumes sock_fd on both success and failure. f_install consumes its fd ref.
+static fd_t sock_fd_create(int sock_fd, int domain, int type, int protocol) {
+    struct fd *fd = sock_fd_alloc(sock_fd, domain, type, protocol);
+    if (fd == NULL) {
+        close(sock_fd);
+        return _ENOMEM;
+    }
     return f_install(fd, type & ~SOCKET_TYPE_MASK);
+}
+
+// Roll back only our own installation: another thread may already have closed
+// and reused this number. The caller retains fd until rollback is complete.
+static void sock_fd_uninstall(fd_t f, struct fd *fd) {
+    struct fdtable *table = current->files;
+    lock(&table->lock);
+    if (f >= 0 && (unsigned)f < table->size && table->files[f] == fd) {
+        table->files[f] = NULL;
+        bit_clear(f, table->cloexec);
+        fd_close(fd);
+    }
+    unlock(&table->lock);
 }
 
 int_t sys_socket(dword_t domain, dword_t type, dword_t protocol) {
@@ -61,10 +86,7 @@ int_t sys_socket(dword_t domain, dword_t type, dword_t protocol) {
     }
 #endif
 
-    fd_t f = sock_fd_create(sock, domain, type, protocol);
-    if (f < 0)
-        close(sock);
-    return f;
+    return sock_fd_create(sock, domain, type, protocol);
 }
 
 static void inode_release_if_exist(struct inode_data *inode) {
@@ -442,14 +464,15 @@ int_t sys_accept(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_addr) {
             return _EFAULT;
     }
 
-    fd_t client_f = sock_fd_create(client,
+    struct fd *client_fd = sock_fd_alloc(client,
             sock->socket.domain, sock->socket.type, sock->socket.protocol);
-    if (client_f < 0)
+    if (client_fd == NULL) {
         close(client);
+        return _ENOMEM;
+    }
 
     if (sock->socket.domain == AF_LOCAL_) {
         lock(&peer_lock);
-        struct fd *client_fd = f_get(client_f);
         fill_cred(&client_fd->socket.unix_cred);
         struct fd *peer;
         ssize_t res = read(client, &peer, sizeof(peer));
@@ -461,7 +484,9 @@ int_t sys_accept(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_addr) {
         unlock(&peer_lock);
     }
 
-    return client_f;
+    // Publish only after releasing peer_lock. Closing a published socket takes
+    // the file-table lock before peer_lock, so the reverse order would deadlock.
+    return f_install(client_fd, 0);
 }
 
 int_t sys_accept4(fd_t sock_fd, addr_t sockaddr_addr, addr_t sockaddr_len_addr, int_t flags) {
@@ -568,38 +593,44 @@ int_t sys_socketpair(dword_t domain, dword_t type, dword_t protocol, addr_t sock
     if (err < 0)
         return errno_map();
 
-    lock(&peer_lock);
-    int fake_sockets[2];
-    err = fake_sockets[0] = sock_fd_create(sockets[0], domain, type, protocol);
-    if (fake_sockets[0] < 0) {
-        unlock(&peer_lock);
-        goto close_sockets;
+    struct fd *sock1 = sock_fd_alloc(sockets[0], domain, type, protocol);
+    if (sock1 == NULL) {
+        close(sockets[0]);
+        close(sockets[1]);
+        return _ENOMEM;
     }
-    err = fake_sockets[1] = sock_fd_create(sockets[1], domain, type, protocol);
-    if (fake_sockets[1] < 0) {
-        unlock(&peer_lock);
-        goto close_fake_0;
+    struct fd *sock2 = sock_fd_alloc(sockets[1], domain, type, protocol);
+    if (sock2 == NULL) {
+        fd_close(sock1);
+        close(sockets[1]);
+        return _ENOMEM;
     }
-    struct fd *sock1 = f_get(fake_sockets[0]);
-    struct fd *sock2 = f_get(fake_sockets[1]);
+
+    // Neither object is published yet: link them without taking peer_lock.
+    // In particular, never hold peer_lock across f_install (file-table lock).
     sock1->socket.unix_peer = sock2;
     sock2->socket.unix_peer = sock1;
-    unlock(&peer_lock);
 
-    err = _EFAULT;
-    if (user_put(sockets_addr, fake_sockets))
-        goto close_fake_1;
+    // Keep local refs while either installed descriptor can be closed by
+    // another guest thread. f_install consumes only the additional table ref.
+    int fake_sockets[2] = {-1, -1};
+    err = fake_sockets[0] = f_install(fd_retain(sock1), type & ~SOCKET_TYPE_MASK);
+    if (err < 0)
+        goto out;
+    err = fake_sockets[1] = f_install(fd_retain(sock2), type & ~SOCKET_TYPE_MASK);
+    if (err < 0)
+        goto out;
+    err = user_put(sockets_addr, fake_sockets) ? _EFAULT : 0;
 
-    STRACE(" [%d, %d]", fake_sockets[0], fake_sockets[1]);
-    return 0;
-
-close_fake_1:
-    sys_close(fake_sockets[1]);
-close_fake_0:
-    sys_close(fake_sockets[0]);
-close_sockets:
-    close(sockets[0]);
-    close(sockets[1]);
+out:
+    if (err < 0) {
+        sock_fd_uninstall(fake_sockets[0], sock1);
+        sock_fd_uninstall(fake_sockets[1], sock2);
+    } else {
+        STRACE(" [%d, %d]", fake_sockets[0], fake_sockets[1]);
+    }
+    fd_close(sock1);
+    fd_close(sock2);
     return err;
 }
 
