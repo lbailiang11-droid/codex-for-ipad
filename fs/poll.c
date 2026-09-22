@@ -14,9 +14,6 @@
 
 #include "fs/sockrestart.h"
 
-// From kernel/calls.h - avoid circular include
-extern _Noreturn void do_exit_group(int status);
-
 #if defined(__linux__)
 #include <sys/epoll.h>
 #define HAVE_EPOLL 1
@@ -296,13 +293,9 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
         int err;
         int saved_errno;
         struct real_poll_event e[4];
-        // Use a bounded timeout to avoid indefinite blocks. Guest signal
-        // delivery via SIGUSR1 wakes kevent, but if the signal arrives
-        // between our pending check and kevent entry, we'd block forever.
-        // A 5-second cap ensures we re-check signals periodically.
-        // Cap all waits to 1 second to avoid macOS condvar issues.
-        // pthread_cond_timedwait_relative_np can block forever under
-        // thread contention. Short caps ensure we re-check periodically.
+        // Cap each host wait at 1 second to recheck guest signals and group exit
+        // even if a wakeup arrives between the pending check and kevent entry.
+        // An indefinite guest wait remains valid regardless of idle duration.
         struct timespec bounded_timeout = {.tv_sec = 1, .tv_nsec = 0};
         struct timespec *wait_timeout;
         if (timeout == NULL) {
@@ -318,10 +311,7 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
             saved_errno = errno;  // save immediately before anything clobbers it
         } while (saved_errno == EINTR && sockrestart_should_restart_listen_wait());
         current->blocking = false;
-        // Only update last_unblocked_ns when actual events were received.
-        // Timeout returns (err==0) don't count as real progress — the poll_wait
-        // loop is just cycling. This prevents the deadlock detector from being
-        // fooled by idle poll_wait loops during exit cleanup.
+        // Record actual events as progress, not periodic timeout checks.
         if (err > 0) {
             struct timespec _ts;
             clock_gettime(CLOCK_MONOTONIC, &_ts);
@@ -341,46 +331,6 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
             if (current->group->doing_group_exit) {
                 res = _EINTR;
                 break;
-            }
-            // Safety valve: if no thread in this process group has
-            // done real work for >60s and there are no live child
-            // processes, force exit. Catches V8/libuv exit cleanup
-            // hangs where the event loop spins idle forever.
-            //
-            // Exceptions:
-            //   - pid 1 (init): legitimately idles, killing halts the system
-            //   - processes with a controlling TTY: interactive shells idle
-            //     waiting for user input and must not be killed
-            if (current->pid != 1 && current->group->tty == NULL) {
-                struct timespec _now;
-                clock_gettime(CLOCK_MONOTONIC, &_now);
-                uint64_t now_ns = (uint64_t)_now.tv_sec * 1000000000ULL + _now.tv_nsec;
-                uint64_t last = atomic_load_explicit(
-                    &current->group->last_progress_ns, memory_order_relaxed);
-                int64_t idle_s = (int64_t)(now_ns - last) / 1000000000LL;
-                if (idle_s >= 60) {
-                    bool has_live_children = false;
-                    int thread_count = 0;
-                    lock(&pids_lock);
-                    lock(&current->group->lock);
-                    struct task *t_iter;
-                    list_for_each_entry(&current->group->threads, t_iter, group_links) {
-                        thread_count++;
-                        struct task *child;
-                        list_for_each_entry(&t_iter->children, child, siblings) {
-                            if (child->group != current->group && !child->zombie)
-                                has_live_children = true;
-                        }
-                    }
-                    unlock(&current->group->lock);
-                    unlock(&pids_lock);
-                    if (!has_live_children) {
-                        if (ish_exec_trace())
-                            printk("SAFETY-VALVE[poll]: pid=%d idle %llds, %d threads → exit_group\n",
-                                   current->pid, (long long)idle_s, thread_count);
-                        do_exit_group(0);
-                    }
-                }
             }
             if (timeout != NULL) {
                 // Timed wait: subtract elapsed time

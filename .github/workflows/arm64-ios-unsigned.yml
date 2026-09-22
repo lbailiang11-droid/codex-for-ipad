@@ -14,6 +14,8 @@ on:
       - "app/Assets.xcassets/CodexPadAppIcon.appiconset/**"
       - "tests/codexpad_connection/**"
       - "asbestos/guest-arm64/**"
+      - "kernel/futex.c"
+      - "fs/poll.c"
 
 jobs:
   build:
