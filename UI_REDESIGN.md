@@ -73,7 +73,34 @@ control is deferred while another task uses the device.
   final rendering still require the native review.
 - Independent source review corrected stale presentation bindings and retained
   a stable navigation container across width changes.
-- Native build, screenshot/interaction results: pending CI execution.
+- Native ARM64 Release build for `9e50bb61ec922b76f5c6e5d28e2ecd97e2113812`:
+  [run 37615636404](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37615636404),
+  **success**. The existing RPC connection regressions passed, device target
+  compiled, the rootfs BusyBox was verified as ARM aarch64, and IPA packaging
+  succeeded. This does not establish long-duration physical-device stability.
+- Native UI/screenshots for that same source:
+  [run 37615582283](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37615582283),
+  narrow container and accessibility XXL passed in attempt 1; dark passed
+  in attempt 2. The original matrix retains its light failure.
+- Light's keyboard screenshot proved that a newly prepended chat placed the
+  target row below the sidebar List's visible area. The test was corrected
+  to scroll that native List rather than toggling an already-visible sidebar.
+  [Focused light run 37621843912](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37621843912)
+  **passed**, including actual conversation-header change, draft retention,
+  focus recovery, approval dismissal and completed-output expansion/collapse.
+- That focused verification is at `4e9358733031b1a5acd9f6dee69a4ae080ba65b4`;
+  only XCTest/workflow changed. `git diff --exit-code 9e50bb6..4e93587 -- app/CodexPad`
+  passed with no application-source differences, so the ARM64 package and
+  prior three profile results apply to identical UI code. No extra ARM64 or
+  passed-profile rerun was required.
+- Initial standard light/dark launches failed before UI interaction. Dark's
+  native failure attachment records `NotRunning`, without a surviving UI tree
+  or identified crash cause. Subsequent passes do not establish startup or
+  physical-runtime stability.
+- Native original PNGs, source/run context and SHA-256 are retained in the task's
+  `outputs/CodexPad-UI-Round1/screenshots/index.json`; delivery report and unsigned
+  package are alongside it. The simulator is iPad Pro 11-inch (M5), iOS 26.5;
+  results are explicitly isolated native Demo evidence.
 
 ### Evidence limits
 
