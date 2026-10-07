@@ -15,6 +15,13 @@
 - (void)exercisePortraitAndLandscape:(XCUIApplication *)app;
 - (void)exerciseWorkbench:(XCUIApplication *)app name:(NSString *)name;
 - (void)scrollToButton:(XCUIElement *)button inApp:(XCUIApplication *)app;
+- (XCUIElement *)roundTwoElement:(NSString *)identifier inApp:(XCUIApplication *)app;
+- (void)tapRoundTwoButton:(NSString *)identifier inApp:(XCUIApplication *)app;
+- (void)pasteRoundTwoCode:(NSString *)expected inApp:(XCUIApplication *)app;
+- (void)exerciseRoundTwoReading:(XCUIApplication *)app name:(NSString *)name clipboard:(BOOL)clipboard;
+- (void)openRoundTwoWorkbench:(XCUIApplication *)app;
+- (void)openRoundTwoEntry:(NSString *)path inApp:(XCUIApplication *)app;
+- (void)revealRoundTwoElement:(XCUIElement *)element scroller:(XCUIElement *)scroller forward:(BOOL)forward inApp:(XCUIApplication *)app;
 @end
 
 @implementation UITests
@@ -204,6 +211,155 @@
     XCTAssertTrue([allow waitForNonExistenceWithTimeout:5]);
 }
 
+- (void)testRoundTwoLight {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-reading"]];
+    [self exerciseRoundTwoReading:app name:@"round2-11-inch-light" clipboard:YES];
+}
+
+- (void)testRoundTwoDark {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-reading"]];
+    [self exerciseRoundTwoReading:app name:@"round2-11-inch-dark" clipboard:YES];
+}
+
+- (void)testRoundTwoNarrowAccessibility {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-reading", @"--codexpad-demo-width=600"]];
+    XCUIElement *workspace = [self roundTwoElement:@"codexpad.workspace" inApp:app];
+    XCTAssertEqualWithAccuracy(workspace.frame.size.width, 600, 5);
+    [self exerciseRoundTwoReading:app name:@"round2-simulated-600pt-content-XXL" clipboard:NO];
+}
+
+- (void)exerciseRoundTwoReading:(XCUIApplication *)app name:(NSString *)name clipboard:(BOOL)clipboard {
+    NSString *code = @"// 你好 👋\nlet greeting = \"Hello, iPad\"\nprint(greeting)\n";
+    NSString *root = @"/root/workspace/reading-demo";
+    NSString *conversationCopyID = @"codexpad.timeline.reading-code.code.1";
+    XCUIElement *conversationCopy = app.buttons[conversationCopyID];
+    [self revealRoundTwoElement:conversationCopy scroller:app.scrollViews.firstMatch forward:NO inApp:app];
+    [self attachScreen:[name stringByAppendingString:@"-conversation-code"]];
+    if (clipboard) {
+        [conversationCopy tap];
+        [self pasteRoundTwoCode:code inApp:app];
+    }
+
+    [self openRoundTwoWorkbench:app];
+    XCTAssertTrue(app.buttons[@"Changes"].isHittable);
+    [app.buttons[@"Changes"] tap];
+    XCUIElement *summary = [self roundTwoElement:@"codexpad.diff-summary" inApp:app];
+    XCTAssertTrue([summary waitForExistenceWithTimeout:5]);
+    XCTAssertEqualObjects(summary.label, @"4 added lines, 2 removed lines in validated text hunks");
+    NSPredicate *partial = [NSPredicate predicateWithFormat:@"label CONTAINS %@", @"validated text hunks only"];
+    XCTAssertTrue([app.staticTexts matchingPredicate:partial].firstMatch.exists);
+    XCUIElement *diff = [self roundTwoElement:@"codexpad.diff-content" inApp:app];
+    NSPredicate *addedLinePredicate = [NSPredicate predicateWithFormat:
+        @"identifier BEGINSWITH %@ AND label CONTAINS %@", @"codexpad.diff-line.Sources/Welcome.swift#0.", @"你好, iPad"];
+    XCUIElement *addedLine = [[app descendantsMatchingType:XCUIElementTypeAny] matchingPredicate:addedLinePredicate].firstMatch;
+    [self revealRoundTwoElement:addedLine scroller:diff forward:YES inApp:app];
+    [self attachScreen:[name stringByAppendingString:@"-changes-per-file"]];
+    XCUIElement *fold = app.buttons[@"codexpad.diff-file-toggle.Sources/Welcome.swift#0"];
+    [self revealRoundTwoElement:fold scroller:diff forward:NO inApp:app];
+    [fold tap];
+    XCTAssertEqualObjects(fold.value, @"Collapsed");
+    XCTAssertTrue([addedLine waitForNonExistenceWithTimeout:5]);
+    [fold tap];
+    XCTAssertEqualObjects(fold.value, @"Expanded");
+    XCTAssertTrue([addedLine waitForExistenceWithTimeout:5]);
+
+    XCUIElement *rawHeader = app.buttons[@"codexpad.diff-file-toggle.broken.txt#0"];
+    [self revealRoundTwoElement:rawHeader scroller:diff forward:YES inApp:app];
+    XCUIElement *raw = [self roundTwoElement:@"codexpad.diff-raw.broken.txt#0" inApp:app];
+    XCTAssertTrue(raw.exists, @"Malformed hunk must preserve its raw patch");
+    NSPredicate *rawText = [NSPredicate predicateWithFormat:@"label CONTAINS %@", @"Incomplete after"];
+    XCTAssertTrue([app.staticTexts matchingPredicate:rawText].firstMatch.exists);
+    [self attachScreen:[name stringByAppendingString:@"-changes-raw-fallback"]];
+
+    XCTAssertTrue(app.buttons[@"Files"].isHittable);
+    [app.buttons[@"Files"] tap];
+    [self openRoundTwoEntry:[root stringByAppendingString:@"/Sources"] inApp:app];
+    [self openRoundTwoEntry:[root stringByAppendingString:@"/Sources/Welcome.swift"] inApp:app];
+    XCUIElement *previewName = [self roundTwoElement:@"codexpad.file-preview-name" inApp:app];
+    XCTAssertTrue([previewName waitForExistenceWithTimeout:5]);
+    XCTAssertEqualObjects(previewName.label, @"Welcome.swift");
+    XCUIElement *fileCopy = app.buttons[@"codexpad.file-preview-code-copy"];
+    XCTAssertTrue(fileCopy.isHittable);
+    NSPredicate *fileSource = [NSPredicate predicateWithFormat:@"label CONTAINS %@", @"print(greeting)"];
+    XCTAssertTrue([app.staticTexts matchingPredicate:fileSource].firstMatch.exists);
+    // The line-number gutter is intentionally hidden from VoiceOver. Its
+    // presence/alignment is reviewed in this original native screenshot.
+    [self attachScreen:[name stringByAppendingString:@"-file-code-line-numbers"]];
+    if (clipboard) {
+        [fileCopy tap];
+        [self tapRoundTwoButton:@"codexpad.close-workbench" inApp:app];
+        XCTAssertTrue([[self roundTwoElement:@"codexpad.workbench" inApp:app] waitForNonExistenceWithTimeout:5]);
+        [self pasteRoundTwoCode:code inApp:app];
+        [self openRoundTwoWorkbench:app];
+    }
+    [self tapRoundTwoButton:@"codexpad.file-preview-back" inApp:app];
+    [self tapRoundTwoButton:@"codexpad.files-parent" inApp:app];
+    [self tapRoundTwoButton:@"codexpad.files-refresh" inApp:app];
+
+    [self openRoundTwoEntry:[root stringByAppendingString:@"/binary.bin"] inApp:app];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.file-preview-binary" inApp:app] waitForExistenceWithTimeout:5]);
+    XCTAssertFalse(app.buttons[@"codexpad.file-preview-copy"].isEnabled);
+    if (clipboard) [self attachScreen:[name stringByAppendingString:@"-file-binary"]];
+    [self tapRoundTwoButton:@"codexpad.file-preview-back" inApp:app];
+
+    [self openRoundTwoEntry:[root stringByAppendingString:@"/empty.txt"] inApp:app];
+    XCTAssertTrue([app.staticTexts[@"Empty file"] waitForExistenceWithTimeout:5]);
+    if (clipboard) [self attachScreen:[name stringByAppendingString:@"-file-empty"]];
+    [self tapRoundTwoButton:@"codexpad.file-preview-back" inApp:app];
+
+    [self openRoundTwoEntry:[root stringByAppendingString:@"/large.txt"] inApp:app];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.file-preview-truncated" inApp:app] waitForExistenceWithTimeout:5]);
+    XCTAssertEqualObjects(app.buttons[@"codexpad.file-preview-copy"].label, @"Copy preview");
+    XCTAssertTrue(app.buttons[@"codexpad.file-preview-copy"].isEnabled);
+    // Stay at the top; the fixture has thousands of lines below the honest
+    // 200 KB cap notice, which should remain visible in this screenshot.
+    [self attachScreen:[name stringByAppendingString:@"-file-truncated-preview"]];
+    [self tapRoundTwoButton:@"codexpad.file-preview-back" inApp:app];
+
+    [self openRoundTwoEntry:[root stringByAppendingString:@"/notes.txt"] inApp:app];
+    NSPredicate *plainText = [NSPredicate predicateWithFormat:@"label CONTAINS %@", @"Text stays selectable."];
+    XCTAssertTrue([[app.staticTexts matchingPredicate:plainText].firstMatch waitForExistenceWithTimeout:5]);
+    XCTAssertFalse(app.buttons[@"codexpad.file-preview-code-copy"].exists);
+    if (clipboard) [self attachScreen:[name stringByAppendingString:@"-file-plain-text"]];
+    [self tapRoundTwoButton:@"codexpad.close-workbench" inApp:app];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.workbench" inApp:app] waitForNonExistenceWithTimeout:5]);
+    XCTAssertTrue([self roundTwoElement:@"codexpad.composer" inApp:app].isHittable);
+}
+
+- (void)openRoundTwoWorkbench:(XCUIApplication *)app {
+    XCUIElement *workbench = [self roundTwoElement:@"codexpad.workbench" inApp:app];
+    if (!workbench.exists) [self tapRoundTwoButton:@"codexpad.toggle-workbench" inApp:app];
+    XCTAssertTrue([workbench waitForExistenceWithTimeout:5]);
+}
+
+- (void)openRoundTwoEntry:(NSString *)path inApp:(XCUIApplication *)app {
+    XCUIElement *workbench = [self roundTwoElement:@"codexpad.workbench" inApp:app];
+    XCUIElement *list = [workbench descendantsMatchingType:XCUIElementTypeCollectionView].firstMatch;
+    XCTAssertTrue([list waitForExistenceWithTimeout:5]);
+    XCUIElement *entry = app.buttons[[@"codexpad.file-entry." stringByAppendingString:path]];
+    [self revealRoundTwoElement:entry scroller:list forward:YES inApp:app];
+    [entry tap];
+}
+
+- (void)revealRoundTwoElement:(XCUIElement *)element scroller:(XCUIElement *)scroller forward:(BOOL)forward inApp:(XCUIApplication *)app {
+    for (NSUInteger attempt = 0; attempt < 8 && !element.isHittable; attempt++) {
+        XCTAssertTrue(scroller.exists, @"Expected the actual native content scroller");
+        if (forward) [scroller swipeUpWithVelocity:XCUIGestureVelocitySlow];
+        else [scroller swipeDownWithVelocity:XCUIGestureVelocitySlow];
+    }
+    if (!element.isHittable) {
+        [self attachScreen:@"native-round2-control-unreachable"];
+        XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
+        tree.name = @"native-round2-control-accessibility-tree";
+        tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:tree];
+    }
+    XCTAssertTrue(element.isHittable);
+}
+
 - (void)exercisePortraitAndLandscape:(XCUIApplication *)app {
     for (NSNumber *orientation in @[@(UIDeviceOrientationPortrait), @(UIDeviceOrientationLandscapeLeft)]) {
         XCUIDevice.sharedDevice.orientation = orientation.integerValue;
@@ -280,6 +436,65 @@
     attachment.name = name;
     attachment.lifetime = XCTAttachmentLifetimeKeepAlways;
     [self addAttachment:attachment];
+}
+
+// Round 2 reading helpers. Copy is exercised through the App's real button;
+// Paste uses the native edit menu in the existing composer, rather than
+// reading UIPasteboard from the separate XCTest runner process.
+- (XCUIElement *)roundTwoElement:(NSString *)identifier inApp:(XCUIApplication *)app {
+    return [[app descendantsMatchingType:XCUIElementTypeAny] matchingIdentifier:identifier].firstMatch;
+}
+
+- (void)tapRoundTwoButton:(NSString *)identifier inApp:(XCUIApplication *)app {
+    XCUIElement *button = [self visibleButton:identifier inApp:app];
+    XCTAssertNotNil(button, @"Expected a reachable native button: %@", identifier);
+    [button tap];
+}
+
+- (void)pasteRoundTwoCode:(NSString *)expected inApp:(XCUIApplication *)app {
+    XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
+    XCTAssertTrue(composer.isHittable);
+    [composer tap];
+    [composer pressForDuration:1.2];
+    XCUIElementQuery *pasteItems = [[app descendantsMatchingType:XCUIElementTypeAny]
+        matchingPredicate:[NSPredicate predicateWithFormat:@"label == %@", @"Paste"]];
+    XCTAssertTrue([pasteItems.firstMatch waitForExistenceWithTimeout:5], @"Native Paste menu did not appear");
+    XCUIElement *paste = nil;
+    for (NSUInteger index = 0; index < pasteItems.count; index++) {
+        XCUIElement *candidate = [pasteItems elementBoundByIndex:index];
+        if (candidate.isHittable) { paste = candidate; break; }
+    }
+    XCTAssertNotNil(paste);
+    [paste tap];
+    NSPredicate *rawCode = [NSPredicate predicateWithFormat:@"value == %@", expected];
+    XCTNSPredicateExpectation *pasted = [[XCTNSPredicateExpectation alloc] initWithPredicate:rawCode object:composer];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[pasted] timeout:5], XCTWaiterResultCompleted,
+        @"Copy/Paste must preserve raw code, including whitespace");
+
+    // Remove only this known fixture paste, keeping the same App launch and
+    // avoiding a second cold launch just to obtain an empty composer.
+    NSMutableString *deleteKeys = [NSMutableString string];
+    [expected enumerateSubstringsInRange:NSMakeRange(0, expected.length)
+        options:NSStringEnumerationByComposedCharacterSequences
+        usingBlock:^(NSString *substring, NSRange substringRange, NSRange enclosingRange, BOOL *stop) {
+            [deleteKeys appendString:XCUIKeyboardKeyDelete];
+        }];
+    [composer typeText:deleteKeys];
+    XCTAssertTrue([(NSString *)composer.value length] == 0);
+    XCUIElement *keyboard = app.keyboards.firstMatch;
+    if (keyboard.exists) {
+        // The current App has no codexpad.dismiss-keyboard control. Use the
+        // iPad keyboard's real dismissal button before presenting the panel.
+        NSPredicate *dismissLabel = [NSPredicate predicateWithFormat:
+            @"label MATCHES[c] %@ OR identifier MATCHES[c] %@", @"(Hide|Dismiss) keyboard", @"(Hide|Dismiss) keyboard"];
+        XCUIElementQuery *buttons = [app.buttons matchingPredicate:dismissLabel];
+        BOOL tappedDismiss = NO;
+        for (NSUInteger index = 0; index < buttons.count; index++) {
+            XCUIElement *button = [buttons elementBoundByIndex:index];
+            if (button.isHittable) { [button tap]; tappedDismiss = YES; break; }
+        }
+        if (tappedDismiss) XCTAssertTrue([keyboard waitForNonExistenceWithTimeout:5]);
+    }
 }
 
 @end

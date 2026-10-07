@@ -1,0 +1,174 @@
+name: CodexPad native UI round 2
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Native reading profile to verify
+        type: choice
+        default: all
+        options:
+          - all
+          - 11-inch-light
+          - 11-inch-dark
+          - 11-inch-narrow-XXL
+  push:
+    branches: [codex/ui-round2]
+    paths:
+      - .github/workflows/ipados-ui-round2.yml
+      - app/CodexPad/**
+      - app/UITests/**
+      - iSH.xcodeproj/**
+      - tests/codexpad_ui_round2/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codexpad-ui-round2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  foundation-reading:
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify Foundation reading parser and lexer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          git rev-parse HEAD > artifacts/source-commit.txt
+          swift --version > artifacts/swift-version.txt
+          python3 tests/codexpad_ui_round2/run.py 2>&1 | tee artifacts/reading-regression.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: CodexPad-reading-foundation-round2
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 14
+  native-reading:
+    needs: foundation-reading
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["11-inch-light","11-inch-dark","11-inch-narrow-XXL"]') }}
+    env:
+      PROFILE: ${{ matrix.profile }}
+      APPEARANCE: ${{ matrix.profile == '11-inch-light' && 'light' || 'dark' }}
+      CONTENT_SIZE: ${{ matrix.profile == '11-inch-narrow-XXL' && 'accessibility-extra-extra-large' || 'large' }}
+      TEST_METHOD: ${{ matrix.profile == '11-inch-light' && 'testRoundTwoLight' || matrix.profile == '11-inch-dark' && 'testRoundTwoDark' || 'testRoundTwoNarrowAccessibility' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install native build dependencies
+        run: brew install llvm lld ninja libarchive meson
+      - name: Record toolchain and select 11-inch simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          xcodebuild -version > artifacts/xcode-version.txt
+          git rev-parse HEAD > artifacts/source-commit.txt
+          xcrun simctl list devices available -j > artifacts/simulators.json
+          udid="$(python3 - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          devices = json.loads(Path('artifacts/simulators.json').read_text())['devices']
+          candidates = [dict(device, runtime=runtime)
+              for runtime, entries in devices.items() for device in entries
+              if device.get('isAvailable') and device.get('name', '').startswith('iPad')
+              and '11-inch' in device['name']]
+          if not candidates:
+              raise SystemExit('No available 11-inch iPad simulator')
+          candidates.sort(key=lambda d: (d['runtime'], 'Pro' in d['name']), reverse=True)
+          selected = candidates[0]
+          selected.update(profile=os.environ['PROFILE'], appearance=os.environ['APPEARANCE'],
+                          content_size=os.environ['CONTENT_SIZE'], demo_mode=True,
+                          narrow_container_simulated=os.environ['PROFILE'] == '11-inch-narrow-XXL',
+                          state_is_preboot_selection=True)
+          Path('artifacts/validation-context.json').write_text(json.dumps(selected, indent=2))
+          print(selected['udid'])
+          print('Selected ' + selected['name'] + ' / ' + selected['runtime'], file=sys.stderr)
+          PY
+          )"
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid" 2>/dev/null || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time '9:41' --batteryState charged --batteryLevel 100
+          xcrun simctl ui "$udid" content_size "$CONTENT_SIZE"
+          xcrun simctl ui "$udid" appearance "$APPEARANCE"
+      - name: Build and exercise native reading controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project iSH.xcodeproj -scheme iSH \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -resultBundlePath "$GITHUB_WORKSPACE/artifacts/CodexPad-UI-Round2.xcresult" \
+            -only-testing:"iSHUITests/UITests/$TEST_METHOD" \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/xcodebuild.log
+      - name: Capture failure diagnostics and crash reports
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p artifacts/diagnostics
+          if test -n "${SIMULATOR_UDID:-}"; then
+            xcrun simctl spawn "$SIMULATOR_UDID" log show --last 20m --style compact \
+              --predicate 'process == "CodexPad" OR process == "iSH" OR process == "iSHUITests-Runner"' \
+              > artifacts/diagnostics/simulator.log 2>&1 || true
+          fi
+          python3 - <<'PY'
+          import json, os, shutil, time
+          from pathlib import Path
+          home = Path.home()
+          roots = [home / 'Library/Logs/DiagnosticReports']
+          udid = os.environ.get('SIMULATOR_UDID')
+          if udid:
+              roots.append(home / 'Library/Developer/CoreSimulator/Devices' / udid / 'data/Library/Logs/CrashReporter')
+          output = Path('artifacts/diagnostics/crash-reports')
+          output.mkdir(parents=True, exist_ok=True)
+          collected = []
+          for root_index, root in enumerate(roots):
+              if not root.exists():
+                  continue
+              for report in root.rglob('*'):
+                  if not report.is_file() or report.suffix.lower() not in ('.ips', '.crash'):
+                      continue
+                  if not report.name.lower().startswith(('codexpad', 'ish')) or report.stat().st_mtime < time.time() - 45 * 60:
+                      continue
+                  destination = output / f'{root_index}-{report.name}'
+                  shutil.copy2(report, destination)
+                  collected.append(dict(name=destination.name, source=str(report), modified=report.stat().st_mtime))
+          (output / 'manifest.json').write_text(json.dumps(collected, indent=2))
+          print(f'Preserved {len(collected)} relevant crash reports; an empty list does not establish an exit cause.')
+          PY
+      - name: Export native screenshots
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/screenshots
+          if test -n "${SIMULATOR_UDID:-}"; then
+            xcrun simctl io "$SIMULATOR_UDID" screenshot artifacts/screenshots/final.png || true
+          fi
+          if test -d artifacts/CodexPad-UI-Round2.xcresult; then
+            xcrun xcresulttool export attachments \
+              --path artifacts/CodexPad-UI-Round2.xcresult \
+              --output-path artifacts/screenshots/attachments || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: CodexPad-UI-round2-${{ matrix.profile }}
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 14
