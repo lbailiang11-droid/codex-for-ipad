@@ -1,4 +1,5 @@
 name: CodexPad native UI round 2
+# Selective native reading evidence; no physical device is used.
 
 on:
   workflow_dispatch:
