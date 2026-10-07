@@ -23,6 +23,8 @@ struct CodexPadRootView: View {
         GeometryReader { window in
             workspace(width: window.size.width)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("codexpad.workspace")
     }
 
     private func workspace(width: CGFloat) -> some View {
@@ -53,7 +55,6 @@ struct CodexPadRootView: View {
             }
             .presentationDragIndicator(.visible)
         }
-        .accessibilityIdentifier("codexpad.workspace")
         .tint(CodexPalette.cobalt)
         .background(CodexPalette.canvas)
         .sheet(isPresented: $model.showsSettings, onDismiss: model.requestComposerFocus) {
@@ -96,11 +97,18 @@ struct CodexPadRootView: View {
         ) {
             sidebar(compact: false)
                 .navigationSplitViewColumnWidth(min: 260, ideal: CodexLayout.sidebarIdealWidth, max: 320)
+                .toolbar(removing: .sidebarToggle)
         } detail: {
             conversation(compact: compact)
+                .toolbar(removing: .sidebarToggle)
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar(removing: .sidebarToggle)
+        // A small real container can inherit regular traits from a larger
+        // parent window. Give the native split controller the same compact
+        // policy as the measured workspace, rather than hiding an oversized
+        // sidebar inside a regular split controller.
+        .environment(\.horizontalSizeClass, compact ? .compact : horizontalSizeClass)
     }
 
     private func conversation(compact: Bool) -> some View {

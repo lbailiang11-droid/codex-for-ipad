@@ -869,6 +869,10 @@ final class CodexWorkspaceModel: ObservableObject {
     func resolve(_ request: PendingServerRequest, choice: ApprovalChoice) async {
         if demoMode {
             pendingRequests.removeAll { $0.id == request.id }
+            if let threadID = request.threadID,
+               !pendingRequests.contains(where: { $0.threadID == threadID }) {
+                setThreadActivity(.idle, id: threadID)
+            }
             appendRuntime("Demo approval answered: \(choice). No server request was sent.")
             return
         }
@@ -1502,6 +1506,7 @@ final class CodexWorkspaceModel: ObservableObject {
     }
 
     private func seedDemoWorkspace() {
+        let hasDemoApproval = ProcessInfo.processInfo.arguments.contains("--codexpad-demo-approval")
         enginePhase = .ready
         account = AccountSummary(authMode: "chatgpt", email: "joshua@example.com", plan: "pro")
         availableModels = [
@@ -1545,7 +1550,7 @@ final class CodexWorkspaceModel: ObservableObject {
             preview: "Native iPad workspace — typography, conversation and keyboard focus",
             cwd: "/root/workspaces/iPad/Projects/codex-for-ipad/native-ui-round-one/长路径适配验证",
             updatedAt: .now,
-            activity: .waiting,
+            activity: hasDemoApproval ? .waiting : .idle,
             agentNickname: nil
         )
         threads = [
@@ -1597,7 +1602,7 @@ final class CodexWorkspaceModel: ObservableObject {
             WorkspaceEntry(id: "Dependencies", name: "Dependencies", path: "\(directoryPath)/Dependencies", isDirectory: true, isFile: false),
             WorkspaceEntry(id: "README", name: "README.md", path: "\(directoryPath)/README.md", isDirectory: false, isFile: true)
         ]
-        pendingRequests = ProcessInfo.processInfo.arguments.contains("--codexpad-demo-approval") ? [
+        pendingRequests = hasDemoApproval ? [
             PendingServerRequest(
                 id: "approval-demo",
                 rpcID: .integer(42),

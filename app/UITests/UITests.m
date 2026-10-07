@@ -27,7 +27,20 @@
     app.launchArguments = [@[@"--codexpad-demo"] arrayByAddingObjectsFromArray:additionalArguments];
     [app launch];
     XCUIElement *workspace = [app descendantsMatchingType:XCUIElementTypeAny][@"codexpad.workspace"];
-    XCTAssertTrue([workspace waitForExistenceWithTimeout:20], @"Native SwiftUI workspace did not appear");
+    BOOL workspaceFound = [workspace waitForExistenceWithTimeout:20];
+    if (!workspaceFound) {
+        // Preserve the actual screen and hierarchy at the failure, before
+        // XCTest terminates the app and the workflow captures SpringBoard.
+        [self attachScreen:@"native-launch-workspace-missing"];
+        XCUIElement *composer = [app descendantsMatchingType:XCUIElementTypeAny][@"codexpad.composer"];
+        NSString *details = [NSString stringWithFormat:@"app state=%lu; composer exists=%d\n%@",
+            (unsigned long)app.state, composer.exists, app.debugDescription];
+        XCTAttachment *tree = [XCTAttachment attachmentWithString:details];
+        tree.name = @"native-launch-accessibility-tree";
+        tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:tree];
+    }
+    XCTAssertTrue(workspaceFound, @"Native SwiftUI workspace did not appear");
     XCTAssertTrue([app.keyboards.firstMatch waitForNonExistenceWithTimeout:5]);
     return app;
 }
@@ -35,6 +48,19 @@
 - (void)testRoundOneLight {
     XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-long-model"]];
     [self exercisePortraitAndLandscape:app];
+    XCUIElement *output = app.buttons[@"Show output"];
+    for (NSUInteger attempt = 0; attempt < 8 && !output.isHittable; attempt++) {
+        [app.scrollViews.firstMatch swipeDownWithVelocity:XCUIGestureVelocitySlow];
+    }
+    XCTAssertTrue(output.isHittable);
+    NSPredicate *containsLastOutputLine = [NSPredicate predicateWithFormat:@"label CONTAINS %@", @"[Demo output 24]"];
+    XCUIElement *outputText = [app.staticTexts matchingPredicate:containsLastOutputLine].firstMatch;
+    XCTAssertFalse(outputText.exists, @"Completed long output should start collapsed");
+    [output tap];
+    XCTAssertTrue([outputText waitForExistenceWithTimeout:5]);
+    [self attachScreen:@"11-inch-light-completed-tool-output-expanded"];
+    [output tap];
+    XCTAssertTrue([outputText waitForNonExistenceWithTimeout:5]);
     [app terminate];
 
     // Only explicit demo mode answers these operations locally. Assertions
@@ -190,11 +216,15 @@
 }
 
 - (void)scrollToButton:(XCUIElement *)button inApp:(XCUIApplication *)app {
-    XCTAssertTrue([button waitForExistenceWithTimeout:5]);
     XCUIElement *scroller = app.scrollViews.firstMatch;
+    XCTAssertTrue(scroller.exists);
+    // LazyVStack does not create a far-offscreen approval at accessibility
+    // sizes. Scroll first, then require the actual button to exist and be
+    // hittable; waiting for an unmaterialized row cannot reveal it.
     for (NSUInteger attempt = 0; attempt < 10 && !button.isHittable; attempt++) {
         [scroller swipeUpWithVelocity:XCUIGestureVelocitySlow];
     }
+    XCTAssertTrue(button.exists);
 }
 
 - (XCUIElement *)visibleButton:(NSString *)identifier inApp:(XCUIApplication *)app {
@@ -210,7 +240,11 @@
     // ThreadRow combines its title, state and workspace into its native label.
     // Find that live row rather than using fixed coordinates or its title text
     // in the conversation header.
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"label BEGINSWITH %@ AND label CONTAINS %@", title, @"/root/workspace"];
+    // List's selection wrapper may expose only the visible title instead of
+    // ThreadRow's full combined label on iPadOS 26. The currently selected
+    // conversation is "New demo chat", so this title uniquely identifies
+    // the seeded sidebar row without depending on a hidden path attribute.
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"label BEGINSWITH %@", title];
     XCUIElementQuery *matches = [[app descendantsMatchingType:XCUIElementTypeAny] matchingPredicate:predicate];
     for (NSUInteger index = 0; index < matches.count; index++) {
         XCUIElement *candidate = [matches elementBoundByIndex:index];
