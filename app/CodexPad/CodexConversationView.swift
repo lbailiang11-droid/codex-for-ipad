@@ -4,6 +4,10 @@ struct CodexConversationView: View {
     @ObservedObject var model: CodexWorkspaceModel
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    @State private var followsLatest = true
+    @State private var previousContentFrame: CGRect?
 
     var body: some View {
         Group {
@@ -21,97 +25,183 @@ struct CodexConversationView: View {
     }
 
     private func conversation(_ thread: CodexThreadRecord) -> some View {
-        VStack(spacing: 0) {
-            conversationHeader(thread)
-            Divider().overlay(CodexPalette.line)
-            timeline
-            ComposerBar(model: model)
+        GeometryReader { workspace in
+            VStack(spacing: 0) {
+                conversationHeader(
+                    thread,
+                    compact: workspace.size.width < 480 || dynamicTypeSize.isAccessibilitySize
+                )
+                Divider().overlay(CodexPalette.line)
+                if let error = model.errorBanner {
+                    ErrorBanner(message: error) {
+                        model.errorBanner = nil
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(CodexPalette.canvas)
+                }
+                timeline
+                ComposerBar(model: model)
+            }
+            .background(CodexPalette.surface)
         }
     }
 
-    private func conversationHeader(_ thread: CodexThreadRecord) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(thread.title)
-                    .font(.headline)
-                    .foregroundStyle(CodexPalette.ink)
-                    .lineLimit(1)
-                Label(thread.cwd, systemImage: "folder")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(CodexPalette.secondaryInk)
-                    .lineLimit(1)
+    private func conversationHeader(_ thread: CodexThreadRecord, compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(thread.title)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(CodexPalette.ink)
+                        .lineLimit(2)
+                    Label(thread.cwd, systemImage: "folder")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(CodexPalette.secondaryInk)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !compact {
+                    EngineStatusPill(phase: model.enginePhase)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
-            Spacer()
-            EngineStatusPill(phase: model.enginePhase)
+            if compact {
+                EngineStatusPill(phase: model.enginePhase)
+            }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.horizontal, compact ? 16 : 24)
+        .padding(.vertical, 16)
         .background(CodexPalette.surface)
     }
 
     private var timeline: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    if let error = model.errorBanner {
-                        ErrorBanner(message: error) {
-                            model.errorBanner = nil
+        GeometryReader { viewport in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        let items = model.selectedTimeline
+                        ForEach(items) { item in
+                            TimelineCard(
+                                item: item,
+                                isFirst: item.id == items.first?.id,
+                                isLast: item.id == items.last?.id && relevantRequests.isEmpty
+                            )
+                            .id(item.id)
                         }
-                        .padding(.bottom, 12)
-                    }
 
-                    let items = model.selectedTimeline
-                    ForEach(items.indices, id: \.self) { index in
-                        let item = items[index]
-                        TimelineCard(
-                            item: item,
-                            isFirst: index == 0,
-                            isLast: index == items.count - 1 && relevantRequests.isEmpty
-                        )
-                        .id(item.id)
-                    }
-
-                    ForEach(relevantRequests) { request in
-                        Group {
-                            if request.kind == .question {
-                                QuestionRequestCard(request: request) { values in
-                                    Task { await model.answer(request, values: values) }
-                                }
-                            } else if request.kind == .advanced {
-                                AdvancedServerRequestCard(request: request) { result in
-                                    await model.answerAdvancedRequest(request, resultText: result)
-                                } reject: {
-                                    Task { await model.rejectAdvancedRequest(request) }
-                                }
-                            } else {
-                                ApprovalRequestCard(request: request) { choice in
-                                    Task { await model.resolve(request, choice: choice) }
+                        ForEach(relevantRequests) { request in
+                            Group {
+                                if request.kind == .question {
+                                    QuestionRequestCard(request: request) { values in
+                                        Task { await model.answer(request, values: values) }
+                                    }
+                                } else if request.kind == .advanced {
+                                    AdvancedServerRequestCard(request: request) { result in
+                                        await model.answerAdvancedRequest(request, resultText: result)
+                                    } reject: {
+                                        Task { await model.rejectAdvancedRequest(request) }
+                                    }
+                                } else {
+                                    ApprovalRequestCard(request: request) { choice in
+                                        Task { await model.resolve(request, choice: choice) }
+                                    }
                                 }
                             }
+                            .padding(.leading, viewport.size.width < 500 ? 0 : 42)
+                            .padding(.top, 12)
                         }
-                        .padding(.leading, 42)
-                    }
 
-                    if model.isTurnRunning {
-                        WorkingIndicator()
-                            .id("working")
+                        if model.isTurnRunning {
+                            WorkingIndicator()
+                                .id("working")
+                        }
+                        Color.clear.frame(height: 1).id("timeline-end")
                     }
-                    Color.clear.frame(height: 1).id("timeline-end")
+                    .padding(.vertical, 24)
+                    .frame(maxWidth: 820)
+                    .padding(.horizontal, viewport.size.width < 500 ? 16 : 24)
+                    .frame(maxWidth: .infinity)
+                    .background {
+                        GeometryReader { content in
+                            Color.clear.preference(
+                                key: TimelineContentFrameKey.self,
+                                value: content.frame(in: .named("codexpad.timeline"))
+                            )
+                        }
+                    }
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 18)
-                .frame(maxWidth: 840)
-                .frame(maxWidth: .infinity)
-            }
-            .scrollDismissesKeyboard(model.desktopModeEnabled ? .never : .interactively)
-            .onChange(of: model.selectedTimeline.count) { _, _ in
-                scrollToEnd(proxy)
-            }
-            .onChange(of: model.pendingRequests.count) { _, _ in
-                scrollToEnd(proxy)
-            }
-            .onChange(of: model.isTurnRunning) { _, _ in
-                scrollToEnd(proxy)
+                .coordinateSpace(name: "codexpad.timeline")
+                .background(CodexPalette.surface)
+                .scrollDismissesKeyboard(model.desktopModeEnabled ? .never : .interactively)
+                .onPreferenceChange(TimelineContentFrameKey.self) { frame in
+                    // Growth does not disable following. Moving upward does, including
+                    // while streamed content is growing at the bottom of the timeline.
+                    if let previous = previousContentFrame {
+                        let nearBottom = frame.maxY - viewport.size.height <= 80
+                        let movedUp = frame.minY > previous.minY + 1
+                        let stableHeight = abs(frame.height - previous.height) < 1
+                        let moved = abs(frame.minY - previous.minY) > 1
+                        if nearBottom {
+                            followsLatest = true
+                        } else if (movedUp && frame.height >= previous.height - 1) || (stableHeight && moved) {
+                            followsLatest = false
+                        }
+                    }
+                    previousContentFrame = frame
+                }
+                .onAppear {
+                    followsLatest = true
+                    previousContentFrame = nil
+                    scrollToEnd(proxy, animated: false)
+                }
+                .onChange(of: model.selectedThreadID) { _, _ in
+                    followsLatest = true
+                    previousContentFrame = nil
+                    scrollToEnd(proxy, animated: false)
+                }
+                .onChange(of: model.selectedTimeline) { oldItems, newItems in
+                    guard followsLatest else { return }
+                    scrollToEnd(proxy, animated: oldItems.count != newItems.count)
+                }
+                .onChange(of: relevantRequests.map(\.id)) { _, _ in
+                    guard followsLatest else { return }
+                    scrollToEnd(proxy)
+                }
+                .onChange(of: model.isTurnRunning) { _, _ in
+                    guard followsLatest else { return }
+                    scrollToEnd(proxy)
+                }
+                .onChange(of: viewport.size.height) { _, _ in
+                    guard followsLatest else { return }
+                    scrollToEnd(proxy, animated: false)
+                }
+                .onChange(of: viewport.size.width) { _, _ in
+                    guard followsLatest else { return }
+                    scrollToEnd(proxy, animated: false)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if !followsLatest {
+                        Button {
+                            followsLatest = true
+                            scrollToEnd(proxy)
+                        } label: {
+                            Label(relevantRequests.isEmpty ? "Latest" : "Pending request", systemImage: "arrow.down")
+                                .font(.subheadline.weight(.semibold))
+                                .padding(.horizontal, 14)
+                                .frame(minHeight: 44)
+                                .background(CodexPalette.raised, in: Capsule())
+                                .overlay(Capsule().stroke(CodexPalette.line, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(CodexPalette.cobalt)
+                        .accessibilityLabel(relevantRequests.isEmpty ? "Scroll to latest message" : "Scroll to pending request")
+                        .accessibilityIdentifier("codexpad.latest-message")
+                        .padding(16)
+                    }
+                }
             }
         }
     }
@@ -122,8 +212,8 @@ struct CodexConversationView: View {
         }
     }
 
-    private func scrollToEnd(_ proxy: ScrollViewProxy) {
-        if reduceMotion {
+    private func scrollToEnd(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        if reduceMotion || !animated {
             proxy.scrollTo("timeline-end", anchor: .bottom)
         } else {
             withAnimation(.easeOut(duration: 0.24)) {
@@ -133,26 +223,31 @@ struct CodexConversationView: View {
     }
 }
 
+private struct TimelineContentFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 private struct ComposerBar: View {
     @ObservedObject var model: CodexWorkspaceModel
     @FocusState private var isFocused: Bool
+    @ScaledMetric(relativeTo: .subheadline) private var controlHeight: CGFloat = 44
 
     var body: some View {
         VStack(spacing: 8) {
-            modelControls
-            HStack(alignment: .bottom, spacing: 10) {
+            VStack(alignment: .leading, spacing: 8) {
                 TextField("Ask Codex to change, explain, or verify…", text: $model.composerText, axis: .vertical)
                     .font(.body)
+                    .foregroundStyle(CodexPalette.ink)
+                    .lineSpacing(4)
                     .lineLimit(1...7)
-                    .frame(minWidth: 80, maxWidth: .infinity)
+                    .frame(minWidth: 80, maxWidth: .infinity, minHeight: 48, alignment: .topLeading)
                     .focused($isFocused)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background(CodexPalette.raised, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .stroke(isFocused ? CodexPalette.cobalt : CodexPalette.line, lineWidth: isFocused ? 1.5 : 0.5)
-                    }
+                    .padding(.horizontal, 4)
+                    .padding(.top, 4)
                     .accessibilityLabel("Message Codex")
                     .accessibilityIdentifier("codexpad.composer")
                     .onChange(of: isFocused) { _, focused in
@@ -166,35 +261,51 @@ private struct ComposerBar: View {
                         if !enabled { isFocused = false }
                     }
 
-                if model.isTurnRunning {
-                    Button {
-                        if !model.desktopModeEnabled { isFocused = false }
-                        Task { await model.interruptTurn() }
-                    } label: {
-                        Image(systemName: "stop.fill")
-                            .frame(width: 44, height: 44)
+                HStack(alignment: .bottom, spacing: 8) {
+                    modelControls
+                    if model.isTurnRunning {
+                        Button {
+                            if !model.desktopModeEnabled { isFocused = false }
+                            Task { await model.interruptTurn() }
+                        } label: {
+                            Image(systemName: "stop.fill")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(CodexPalette.surface)
+                                .frame(width: 44, height: 44)
+                                .background(CodexPalette.danger, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .keyboardShortcut(".", modifiers: .command)
+                        .accessibilityLabel("Stop the current turn")
+                        .accessibilityIdentifier("codexpad.stop")
+                    } else {
+                        Button {
+                            if !model.desktopModeEnabled { isFocused = false }
+                            Task { await model.sendComposer() }
+                        } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.body.weight(.bold))
+                                .foregroundStyle(CodexPalette.surface)
+                                .frame(width: 44, height: 44)
+                                .background(CodexPalette.cobalt, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .opacity(canSend ? 1 : 0.4)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!canSend)
+                        .keyboardShortcut(.return, modifiers: .command)
+                        .accessibilityLabel("Send message")
+                        .accessibilityIdentifier("codexpad.send")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(CodexPalette.danger)
-                    .keyboardShortcut(".", modifiers: .command)
-                    .accessibilityLabel("Stop the current turn")
-                } else {
-                    Button {
-                        if !model.desktopModeEnabled { isFocused = false }
-                        Task { await model.sendComposer() }
-                    } label: {
-                        Image(systemName: "arrow.up")
-                            .font(.body.weight(.bold))
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(CodexPalette.cobalt)
-                    .disabled(model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .accessibilityLabel("Send message")
-                    .accessibilityIdentifier("codexpad.send")
                 }
             }
+            .padding(12)
+            .background(CodexPalette.raised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(isFocused ? CodexPalette.cobalt : CodexPalette.line, lineWidth: isFocused ? 1.5 : 1)
+            }
+            .shadow(color: .black.opacity(0.04), radius: 12, y: 4)
+
             HStack {
                 Label("Local iSH", systemImage: "ipad")
                 Spacer()
@@ -205,11 +316,18 @@ private struct ComposerBar: View {
             }
             .font(.caption2)
             .foregroundStyle(CodexPalette.secondaryInk)
+            .padding(.horizontal, 4)
         }
+        .frame(maxWidth: 820)
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 10)
-        .background(.bar)
+        .background(CodexPalette.surface)
+    }
+
+    private var canSend: Bool {
+        !model.composerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var modelControls: some View {
@@ -237,9 +355,10 @@ private struct ComposerBar: View {
                         }
                     }
                 } label: {
-                    Label(model.selectedModel?.displayName ?? "Model", systemImage: "cpu")
+                    controlLabel(model.selectedModel?.displayName ?? "Model", systemImage: "cpu")
+                        .frame(maxWidth: 240)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .disabled(model.availableModels.isEmpty)
                 .accessibilityIdentifier("codexpad.model-picker")
 
@@ -258,40 +377,68 @@ private struct ComposerBar: View {
                             }
                         }
                     } label: {
-                        Label(model.selectedReasoningEffort?.capitalized ?? "Reasoning", systemImage: "brain.head.profile")
+                        controlLabel(model.selectedReasoningEffort?.capitalized ?? "Reasoning", systemImage: "brain.head.profile")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("codexpad.reasoning-picker")
-
-                    if model.showsCompleteFeatureSet, !selected.serviceTiers.isEmpty {
-                        Menu {
-                            Button("Provider default") { model.selectedServiceTier = nil }
-                            ForEach(selected.serviceTiers) { tier in
-                                Button(tier.name) { model.selectedServiceTier = tier.id }
-                            }
-                        } label: {
-                            let tierName = selected.serviceTiers.first { $0.id == model.selectedServiceTier }?.name
-                            Label(tierName ?? "Service tier", systemImage: "speedometer")
-                        }
-                        .buttonStyle(.bordered)
-                    }
                 }
 
-                if model.showsCompleteFeatureSet, !model.collaborationModes.isEmpty {
+                if hasServiceTierControls || hasCollaborationControls {
                     Menu {
-                        Button("Standard") { model.selectedCollaborationMode = nil }
-                        ForEach(model.collaborationModes) { mode in
-                            Button(mode.name) { model.selectedCollaborationMode = mode.name }
+                        if let selected = model.selectedModel, hasServiceTierControls {
+                            Menu {
+                                Button("Provider default") { model.selectedServiceTier = nil }
+                                ForEach(selected.serviceTiers) { tier in
+                                    Button(tier.name) { model.selectedServiceTier = tier.id }
+                                }
+                            } label: {
+                                let tierName = selected.serviceTiers.first { $0.id == model.selectedServiceTier }?.name
+                                Label(tierName ?? "Service tier", systemImage: "speedometer")
+                            }
+                        }
+
+                        if hasCollaborationControls {
+                            Menu {
+                                Button("Standard") { model.selectedCollaborationMode = nil }
+                                ForEach(model.collaborationModes) { mode in
+                                    Button(mode.name) { model.selectedCollaborationMode = mode.name }
+                                }
+                            } label: {
+                                Label(model.selectedCollaborationMode ?? "Collaboration", systemImage: "person.2")
+                            }
+                            .accessibilityIdentifier("codexpad.collaboration-picker")
                         }
                     } label: {
-                        Label(model.selectedCollaborationMode ?? "Collaboration", systemImage: "person.2")
+                        controlLabel("More", systemImage: "ellipsis")
                     }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("codexpad.collaboration-picker")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("More model options")
+                    .accessibilityIdentifier("codexpad.more-options")
                 }
             }
         }
+        .frame(height: controlHeight)
+        .frame(maxWidth: .infinity)
         .controlSize(.small)
+    }
+
+    private var hasServiceTierControls: Bool {
+        guard let selected = model.selectedModel else { return false }
+        return model.showsCompleteFeatureSet && !selected.reasoningEfforts.isEmpty && !selected.serviceTiers.isEmpty
+    }
+
+    private var hasCollaborationControls: Bool {
+        model.showsCompleteFeatureSet && !model.collaborationModes.isEmpty
+    }
+
+    private func controlLabel(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(CodexPalette.secondaryInk)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .frame(minHeight: controlHeight)
+            .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -329,8 +476,10 @@ private struct ErrorBanner: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: dismiss) {
                 Image(systemName: "xmark")
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(CodexPalette.secondaryInk)
             .accessibilityLabel("Dismiss error")
         }
         .codexPanel(padding: 12)

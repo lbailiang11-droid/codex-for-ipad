@@ -47,19 +47,36 @@ struct ThreadRow: View {
     let thread: CodexThreadRecord
 
     var body: some View {
-        HStack(alignment: .top, spacing: 11) {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: activityIcon)
-                .font(.caption.weight(.bold))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(activityColor)
-                .frame(width: 18, height: 22)
+                .frame(width: 20, height: 24)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 5) {
-                    Text(thread.title)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(CodexPalette.ink)
-                        .lineLimit(2)
+            VStack(alignment: .leading, spacing: 7) {
+                Text(thread.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(CodexPalette.ink)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "folder")
+                        .accessibilityHidden(true)
+                    Text(workspaceName)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .font(.caption)
+                .foregroundStyle(CodexPalette.secondaryInk)
+
+                HStack(spacing: 8) {
+                    Text(activityLabel)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(activityColor)
+                        .lineLimit(1)
                     if let nickname = thread.agentNickname {
                         Text(nickname)
                             .font(.caption2.weight(.semibold))
@@ -67,15 +84,12 @@ struct ThreadRow: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(CodexPalette.cobalt.opacity(0.1), in: Capsule())
+                            .lineLimit(1)
                     }
                 }
-                Text(workspaceName)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(CodexPalette.secondaryInk)
-                    .lineLimit(1)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(thread.title), \(activityLabel), \(thread.cwd)")
     }
@@ -120,9 +134,12 @@ struct TimelineCard: View {
     let isLast: Bool
 
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    // Nil follows the item's live state. A user's explicit choice survives deltas
+    // and completion; the containing ForEach must identify rows by item.id.
+    @State private var outputExpansionOverride: Bool?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 12) {
             ActivityLoomMark(
                 kind: item.kind,
                 state: item.state,
@@ -131,48 +148,78 @@ struct TimelineCard: View {
             )
             card
         }
+        .padding(.bottom, isMessage ? 24 : 12)
         .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
     private var card: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(alignment: .firstTextBaseline) {
+        VStack(alignment: .leading, spacing: isMessage ? 12 : 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Label(item.title, systemImage: icon)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(accent)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 12)
                 if item.kind != .user {
                     Label(stateLabel, systemImage: stateIcon)
                         .labelStyle(.titleAndIcon)
                         .font(.caption)
-                        .foregroundStyle(CodexPalette.secondaryInk)
+                        .foregroundStyle(stateColor)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
 
             if item.kind == .reasoning {
-                DisclosureGroup("Show reasoning summary") {
+                DisclosureGroup(isExpanded: outputExpansion) {
                     bodyText
                         .padding(.top, 8)
+                } label: {
+                    Text("Show reasoning summary").frame(minHeight: 44, alignment: .leading)
+                }
+                .font(.subheadline)
+            } else if foldsBody {
+                Text(bodyPreview)
+                    .font(.callout)
+                    .foregroundStyle(CodexPalette.secondaryInk)
+                    .lineLimit(3)
+                DisclosureGroup(isExpanded: outputExpansion) {
+                    bodyText.padding(.top, 8)
+                    if !item.detail.isEmpty {
+                        detailText.padding(.top, 8)
+                    }
+                } label: {
+                    Text("Show full content").frame(minHeight: 44, alignment: .leading)
                 }
                 .font(.subheadline)
             } else if !item.body.isEmpty {
                 bodyText
             }
 
-            if !item.detail.isEmpty {
-                ScrollView(.horizontal) {
-                    Text(item.detail)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(CodexPalette.ink)
-                        .textSelection(.enabled)
-                        .padding(12)
+            if !item.detail.isEmpty && !foldsBody {
+                if isActivity && hasLongDetail {
+                    DisclosureGroup(isExpanded: outputExpansion) {
+                        detailText.padding(.top, 8)
+                    } label: {
+                        Text("Show output").frame(minHeight: 44, alignment: .leading)
+                    }
+                    .font(.subheadline)
+                } else {
+                    detailText
                 }
-                .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                .accessibilityLabel("Output")
             }
         }
-        .codexPanel(padding: 15)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(item.kind == .agent ? 0 : 16)
+        .background {
+            if item.kind == .user {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(CodexPalette.userSurface)
+            } else if isActivity {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(CodexPalette.surface)
+            }
+        }
         .overlay(alignment: .leading) {
             if differentiateWithoutColor && item.state == .failed {
                 Rectangle().fill(CodexPalette.danger).frame(width: 4).clipShape(Capsule())
@@ -183,20 +230,67 @@ struct TimelineCard: View {
     @ViewBuilder
     private var bodyText: some View {
         if item.kind == .command {
-            Text(item.body)
+            ScrollView(.horizontal) {
+                Text(item.body)
+                    .font(.callout.monospaced())
+                    .foregroundStyle(CodexPalette.ink)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .textSelection(.enabled)
+                    .padding(.vertical, 2)
+            }
+        } else {
+            TimelineBodyText(text: item.body)
+        }
+    }
+
+    private var detailText: some View {
+        ScrollView(.horizontal) {
+            Text(item.detail)
                 .font(.callout.monospaced())
                 .foregroundStyle(CodexPalette.ink)
+                .fixedSize(horizontal: true, vertical: false)
                 .textSelection(.enabled)
-        } else if let attributed = try? AttributedString(markdown: item.body) {
-            Text(attributed)
-                .font(.body)
-                .foregroundStyle(CodexPalette.ink)
-                .textSelection(.enabled)
-        } else {
-            Text(item.body)
-                .font(.body)
-                .foregroundStyle(CodexPalette.ink)
-                .textSelection(.enabled)
+                .padding(12)
+        }
+        .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityLabel("Output")
+    }
+
+    private var isMessage: Bool { item.kind == .user || item.kind == .agent }
+    private var isActivity: Bool { !isMessage }
+    private var hasLongDetail: Bool { isLong(item.detail) }
+    private var foldsBody: Bool {
+        isActivity && item.kind != .command && item.kind != .reasoning && isLong(item.body)
+    }
+
+    private func isLong(_ text: String) -> Bool {
+        text.count > 600 || text.split(separator: "\n", omittingEmptySubsequences: false).count > 10
+    }
+
+    private var bodyPreview: String {
+        String(item.body.prefix(180))
+    }
+
+    private var outputExpansion: Binding<Bool> {
+        Binding(
+            get: { outputExpansionOverride ?? defaultOutputExpanded },
+            set: { outputExpansionOverride = $0 }
+        )
+    }
+
+    private var defaultOutputExpanded: Bool {
+        if item.kind == .reasoning {
+            return item.state == .running || item.state == .failed
+        }
+        return item.state != .completed
+    }
+
+    private var stateColor: Color {
+        switch item.state {
+        case .pending, .declined: CodexPalette.amber
+        case .running: CodexPalette.cobalt
+        case .completed: CodexPalette.secondaryInk
+        case .failed: CodexPalette.danger
         }
     }
 
@@ -245,6 +339,121 @@ struct TimelineCard: View {
     }
 }
 
+/// Body prose keeps its line breaks; fenced code scrolls independently instead
+/// of widening the conversation. Syntax highlighting remains a later phase.
+private struct TimelineBodyText: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .prose(let value):
+                    prose(value)
+                case .code(let value):
+                    ScrollView(.horizontal) {
+                        Text(value)
+                            .font(.callout.monospaced())
+                            .fixedSize(horizontal: true, vertical: false)
+                            .textSelection(.enabled)
+                            .padding(12)
+                    }
+                    .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityLabel("Code")
+                }
+            }
+        }
+        .foregroundStyle(CodexPalette.ink)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func prose(_ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(Array(value.components(separatedBy: "\n\n").enumerated()), id: \.offset) { _, paragraph in
+                if !paragraph.isEmpty {
+                    let style = paragraphStyle(paragraph)
+                    Text(inlineMarkdown(style.text))
+                        .font(style.font)
+                        .lineSpacing(5)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.leading, style.isQuote ? 12 : 0)
+                        .overlay(alignment: .leading) {
+                            if style.isQuote {
+                                Rectangle().fill(CodexPalette.line).frame(width: 2)
+                            }
+                        }
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+
+    private func inlineMarkdown(_ value: String) -> AttributedString {
+        (try? AttributedString(
+            markdown: value,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(value)
+    }
+
+    private func paragraphStyle(_ value: String) -> (text: String, font: Font, isQuote: Bool) {
+        let heading = value.trimmingCharacters(in: .newlines)
+        if !heading.contains("\n") {
+            for (prefix, font) in [("# ", Font.title2.weight(.semibold)), ("## ", Font.title3.weight(.semibold)), ("### ", Font.headline)] {
+                if heading.hasPrefix(prefix) {
+                    return (String(heading.dropFirst(prefix.count)), font, false)
+                }
+            }
+        }
+        let lines = value.components(separatedBy: "\n")
+        if lines.allSatisfy({ $0.hasPrefix("> ") || $0 == ">" }) {
+            return (lines.map { String($0.dropFirst($0 == ">" ? 1 : 2)) }.joined(separator: "\n"), .body, true)
+        }
+        return (value, .body, false)
+    }
+
+    private enum Block {
+        case prose(String)
+        case code(String)
+    }
+
+    private var blocks: [Block] {
+        var result: [Block] = []
+        var lines: [String] = []
+        var fence: String?
+
+        for line in text.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let activeFence = fence {
+                let marker = activeFence.first!
+                let closingPrefix = trimmed.prefix(while: { $0 == marker })
+                let suffix = trimmed.dropFirst(closingPrefix.count)
+                if closingPrefix.count >= activeFence.count && suffix.trimmingCharacters(in: .whitespaces).isEmpty {
+                    result.append(.code(lines.joined(separator: "\n")))
+                    lines = []
+                    fence = nil
+                } else {
+                    lines.append(line)
+                }
+            } else if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                if !lines.isEmpty {
+                    result.append(.prose(lines.joined(separator: "\n")))
+                }
+                lines = []
+                let marker = trimmed.first!
+                fence = String(trimmed.prefix(while: { $0 == marker }))
+            } else {
+                lines.append(line)
+            }
+        }
+        if !lines.isEmpty {
+            let value = lines.joined(separator: "\n")
+            result.append(fence == nil ? .prose(value) : .code(value))
+        }
+        return result
+    }
+}
+
 private struct ActivityLoomMark: View {
     let kind: TimelineKind
     let state: TimelineState
@@ -277,11 +486,13 @@ private struct ActivityLoomMark: View {
     }
 
     private var nodeColor: Color {
+        if state == .failed { return CodexPalette.danger }
+        if state == .pending || state == .declined { return CodexPalette.amber }
         switch kind {
-        case .agent, .plan: CodexPalette.cobalt
-        case .command, .tool: CodexPalette.teal
-        case .fileChange: CodexPalette.amber
-        default: CodexPalette.secondaryInk
+        case .agent, .plan: return CodexPalette.cobalt
+        case .command, .tool: return CodexPalette.teal
+        case .fileChange: return CodexPalette.amber
+        default: return CodexPalette.secondaryInk
         }
     }
 }
@@ -298,14 +509,17 @@ struct ApprovalRequestCard: View {
             Text(request.message)
                 .font(.body)
                 .foregroundStyle(CodexPalette.ink)
+                .fixedSize(horizontal: false, vertical: true)
             if !request.detail.isEmpty {
-                Text(request.detail)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(CodexPalette.ink)
-                    .textSelection(.enabled)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                ScrollView(.horizontal) {
+                    Text(request.detail)
+                        .font(.callout.monospaced())
+                        .foregroundStyle(CodexPalette.ink)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(12)
+                }
+                .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             }
             ViewThatFits(in: .horizontal) {
                 HStack {
@@ -316,6 +530,7 @@ struct ApprovalRequestCard: View {
                 }
             }
         }
+        .controlSize(.large)
         .codexPanel()
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -331,21 +546,27 @@ struct ApprovalRequestCard: View {
             Button("Decline", role: .destructive) { resolve(.decline) }
                 .buttonStyle(.bordered)
                 .tint(CodexPalette.danger)
+                .frame(minHeight: 44)
             Button("Cancel request", role: .cancel) { resolve(.cancel) }
                 .buttonStyle(.bordered)
                 .tint(CodexPalette.secondaryInk)
+                .frame(minHeight: 44)
         case .unsupported:
             Button("Dismiss") { resolve(.decline) }
                 .buttonStyle(.bordered)
+                .frame(minHeight: 44)
         default:
             Button("Allow once") { resolve(.once) }
                 .buttonStyle(.borderedProminent)
                 .tint(CodexPalette.cobalt)
+                .frame(minHeight: 44)
             Button("Allow for thread") { resolve(.session) }
                 .buttonStyle(.bordered)
+                .frame(minHeight: 44)
             Button("Don’t allow", role: .destructive) { resolve(.decline) }
                 .buttonStyle(.bordered)
                 .tint(CodexPalette.danger)
+                .frame(minHeight: 44)
         }
     }
 }
@@ -391,6 +612,8 @@ struct QuestionRequestCard: View {
             }
             Button("Send answers") { submit(answers) }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .frame(minHeight: 44)
                 .disabled(request.questions.contains { answers[$0.id, default: ""].isEmpty })
         }
         .codexPanel()
@@ -486,8 +709,12 @@ struct AdvancedServerRequestCard: View {
             }
         }
         .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .frame(minHeight: 44)
         .disabled(isSubmitting || resultText.isEmpty)
         Button("Reject request", role: .destructive, action: reject)
             .buttonStyle(.bordered)
+            .controlSize(.large)
+            .frame(minHeight: 44)
     }
 }

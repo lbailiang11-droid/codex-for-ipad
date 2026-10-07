@@ -48,12 +48,28 @@ public final class CodexPadHostViewController: UIViewController {
         workspaceController.view.translatesAutoresizingMaskIntoConstraints = false
         workspaceController.view.backgroundColor = .clear
         view.addSubview(workspaceController.view)
-        NSLayoutConstraint.activate([
-            workspaceController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            workspaceController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        var workspaceConstraints = [
             workspaceController.view.topAnchor.constraint(equalTo: view.topAnchor),
             workspaceController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
+        ]
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--codexpad-demo"),
+           let argument = arguments.first(where: { $0.hasPrefix("--codexpad-demo-width=") }),
+           let width = Double(argument.dropFirst("--codexpad-demo-width=".count)),
+           (480...1_100).contains(width) {
+            // Only isolated UI validation constrains the real hosting view.
+            // Production always fills its actual window; no screen-width override.
+            workspaceConstraints += [
+                workspaceController.view.widthAnchor.constraint(equalToConstant: CGFloat(width)),
+                workspaceController.view.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+            ]
+        } else {
+            workspaceConstraints += [
+                workspaceController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                workspaceController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+            ]
+        }
+        NSLayoutConstraint.activate(workspaceConstraints)
         workspaceController.didMove(toParent: self)
 
         var configuration = UIButton.Configuration.filled()

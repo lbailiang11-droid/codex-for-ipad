@@ -573,6 +573,20 @@ final class CodexWorkspaceModel: ObservableObject {
             errorBanner = "Start the local engine before creating a thread."
             return nil
         }
+        if demoMode {
+            let id = "demo-new-\(UUID().uuidString)"
+            let record = CodexThreadRecord(
+                id: id, title: "New demo chat", preview: "New demo chat",
+                cwd: workspacePath, updatedAt: .now, activity: .idle, agentNickname: nil
+            )
+            upsertThread(record, atFront: true)
+            selectedThreadID = id
+            timelineByThread[id] = []
+            activeTurnID = nil
+            isTurnRunning = false
+            requestComposerFocus()
+            return id
+        }
         do {
             var params: [String: JSONValue] = [
                 "cwd": .string(workspacePath),
@@ -610,6 +624,13 @@ final class CodexWorkspaceModel: ObservableObject {
 
     func resumeThread(_ id: String) async {
         guard enginePhase.isReady else { return }
+        if demoMode {
+            guard threads.contains(where: { $0.id == id }) else { return }
+            selectedThreadID = id
+            activeTurnID = nil
+            isTurnRunning = false
+            return
+        }
         let generation = rpc.connectionID
         do {
             let response = try await rpc.request(
@@ -728,6 +749,11 @@ final class CodexWorkspaceModel: ObservableObject {
         isTurnRunning = true
         setThreadActivity(.running, id: threadID)
 
+        if demoMode {
+            activeTurnID = "demo-turn-\(UUID().uuidString)"
+            appendRuntime("Demo turn started. No model or guest command was executed.")
+            return
+        }
         do {
             var params: [String: JSONValue] = [
                 "threadId": .string(threadID),
@@ -773,6 +799,20 @@ final class CodexWorkspaceModel: ObservableObject {
     func interruptTurn() async {
         guard let threadID = selectedThreadID, let activeTurnID else { return }
         defer { requestComposerFocus() }
+        if demoMode {
+            self.activeTurnID = nil
+            isTurnRunning = false
+            setThreadActivity(.idle, id: threadID)
+            upsertTimeline(
+                TimelineItem(
+                    id: activeTurnID, kind: .notice, title: "Demo turn stopped",
+                    body: "No model or guest command was executed.", detail: "",
+                    state: .completed, timestamp: .now
+                ),
+                in: threadID
+            )
+            return
+        }
         do {
             _ = try await rpc.request(
                 method: "turn/interrupt",
@@ -827,6 +867,11 @@ final class CodexWorkspaceModel: ObservableObject {
     }
 
     func resolve(_ request: PendingServerRequest, choice: ApprovalChoice) async {
+        if demoMode {
+            pendingRequests.removeAll { $0.id == request.id }
+            appendRuntime("Demo approval answered: \(choice). No server request was sent.")
+            return
+        }
         if request.kind == .unsupported {
             do {
                 try await rpc.respondUnsupported(to: request.rpcID, method: request.method)
@@ -1496,9 +1541,9 @@ final class CodexWorkspaceModel: ObservableObject {
         ]
         let thread = CodexThreadRecord(
             id: "demo-thread",
-            title: "Make the repository update-safe",
-            preview: "Make the repository update-safe",
-            cwd: "/root/workspace/codex-for-ipad",
+            title: "让 CodexPad 的原生工作台在横屏、竖屏和窄窗口里都清楚可读",
+            preview: "Native iPad workspace — typography, conversation and keyboard focus",
+            cwd: "/root/workspaces/iPad/Projects/codex-for-ipad/native-ui-round-one/长路径适配验证",
             updatedAt: .now,
             activity: .waiting,
             agentNickname: nil
@@ -1510,10 +1555,23 @@ final class CodexWorkspaceModel: ObservableObject {
         ]
         selectedThreadID = thread.id
         timelineByThread[thread.id] = [
-            TimelineItem(id: "u1", kind: .user, title: "You", body: "Make Codex updates clean and stable without losing the iPad-specific work.", detail: "", state: .completed, timestamp: .now.addingTimeInterval(-180)),
+            TimelineItem(id: "u1", kind: .user, title: "You", body: "整理这个工作台的阅读层次。Keep the conversation comfortable on an 11-inch iPad, with the same model controls, approvals and keyboard behavior.", detail: "", state: .completed, timestamp: .now.addingTimeInterval(-180)),
             TimelineItem(id: "p1", kind: .plan, title: "Plan", body: "Separate upstream pins, protocol compatibility, rootfs packaging, and native UI verification.", detail: "", state: .completed, timestamp: .now.addingTimeInterval(-150)),
-            TimelineItem(id: "c1", kind: .command, title: "Command", body: "cargo zigbuild --target i686-unknown-linux-musl -p codex-app-server", detail: "Compiling codex-app-server…\nFinished release build", state: .completed, timestamp: .now.addingTimeInterval(-120)),
-            TimelineItem(id: "a1", kind: .agent, title: "Codex", body: "The compatibility gate passes against the pinned protocol. I’ve isolated Codex updates behind a manifest and verified pull requests.", detail: "", state: .completed, timestamp: .now.addingTimeInterval(-60))
+            TimelineItem(id: "c1", kind: .command, title: "Build verification · 构建记录", body: "xcodebuild -project iSH.xcodeproj -scheme iSH -destination 'platform=iOS Simulator,name=iPad Pro 11-inch'", detail: (1...24).map { "[Demo output \($0)] Compiling native workspace and accessibility fixtures…" }.joined(separator: "\n"), state: .completed, timestamp: .now.addingTimeInterval(-120)),
+            TimelineItem(id: "a1", kind: .agent, title: "Codex", body: """
+            已把主界面整理成可以专注阅读的工作区。会话侧边栏在窗口够宽时显示，工作台按需打开；竖屏与窄窗口保留完整对话宽度。
+
+            The conversation uses semantic system typography and a calmer hierarchy. Completed tool output stays compact, while running tasks and approval requests keep their actions visible. The model picker and reasoning controls continue to use the existing data.
+
+            **验证边界**：这是原生 SwiftUI 的演示数据，用来检查排版和控件。没有连接真实账户，也没有执行模型或来宾命令。
+
+            ```swift
+            let projectPath = "/root/workspaces/iPad/Projects/codex-for-ipad/native-ui-round-one/very-long-source-directory/ConversationRenderer.swift"
+            let layout = measuredWindowWidth >= 900 ? "Sidebar + conversation" : "Conversation with a thread browser"
+            ```
+
+            正文应自然换行，长代码应横向滚动。关闭工作台后继续输入时，焦点行为仍由现有的触控或桌面输入模式决定。
+            """, detail: "", state: .completed, timestamp: .now.addingTimeInterval(-60))
         ]
         plan = [
             PlanStep(id: "1", text: "Pin upstream source and toolchain", status: "completed"),
@@ -1539,7 +1597,7 @@ final class CodexWorkspaceModel: ObservableObject {
             WorkspaceEntry(id: "Dependencies", name: "Dependencies", path: "\(directoryPath)/Dependencies", isDirectory: true, isFile: false),
             WorkspaceEntry(id: "README", name: "README.md", path: "\(directoryPath)/README.md", isDirectory: false, isFile: true)
         ]
-        pendingRequests = [
+        pendingRequests = ProcessInfo.processInfo.arguments.contains("--codexpad-demo-approval") ? [
             PendingServerRequest(
                 id: "approval-demo",
                 rpcID: .integer(42),
@@ -1552,6 +1610,9 @@ final class CodexWorkspaceModel: ObservableObject {
                 questions: [],
                 rawParams: .object([:])
             )
-        ]
+        ] : []
+        if ProcessInfo.processInfo.arguments.contains("--codexpad-demo-long-model") {
+            availableModels[0].displayName = "GPT-5.3-Codex · Native iPad long model name"
+        }
     }
 }

@@ -1,0 +1,128 @@
+name: CodexPad native UI round 1
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/ui-round1]
+    paths:
+      - .github/workflows/ipados-ui-round1.yml
+      - app/CodexPad/**
+      - app/UITests/**
+      - iSH.xcodeproj/**
+      - scripts/codexpad_ui/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codexpad-ui-round1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-screenshots:
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: 11-inch-light
+            appearance: light
+            content_size: large
+            test_method: testRoundOneLight
+          - profile: 11-inch-dark
+            appearance: dark
+            content_size: large
+            test_method: testRoundOneDark
+          - profile: 11-inch-narrow-container
+            appearance: light
+            content_size: large
+            test_method: testRoundOneNarrowContainer
+          - profile: 11-inch-accessibility-XXL
+            appearance: dark
+            content_size: accessibility-extra-extra-large
+            test_method: testRoundOneAccessibility
+    env:
+      PROFILE: ${{ matrix.profile }}
+      APPEARANCE: ${{ matrix.appearance }}
+      CONTENT_SIZE: ${{ matrix.content_size }}
+      TEST_METHOD: ${{ matrix.test_method }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Install native build dependencies
+        run: brew install llvm lld ninja libarchive meson
+      - name: Record toolchain and select 11-inch simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          xcodebuild -version > artifacts/xcode-version.txt
+          git rev-parse HEAD > artifacts/source-commit.txt
+          xcrun simctl list devices available -j > artifacts/simulators.json
+          udid="$(python3 - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          devices = json.loads(Path('artifacts/simulators.json').read_text())['devices']
+          candidates = [dict(device, runtime=runtime)
+              for runtime, entries in devices.items() for device in entries
+              if device.get('isAvailable') and device.get('name', '').startswith('iPad')
+              and '11-inch' in device['name']]
+          if not candidates:
+              raise SystemExit('No available 11-inch iPad simulator')
+          # Latest installed iOS runtime, preferring an 11-inch Pro.
+          candidates.sort(key=lambda d: (d['runtime'], 'Pro' in d['name']), reverse=True)
+          selected = candidates[0]
+          selected.update(profile=os.environ['PROFILE'], appearance=os.environ['APPEARANCE'],
+                          content_size=os.environ['CONTENT_SIZE'], demo_mode=True,
+                          narrow_container_simulated=os.environ['PROFILE'].endswith('narrow-container'))
+          Path('artifacts/validation-context.json').write_text(json.dumps(selected, indent=2))
+          print(selected['udid'])
+          print('Selected ' + selected['name'] + ' / ' + selected['runtime'], file=sys.stderr)
+          PY
+          )"
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid" 2>/dev/null || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time '9:41' --batteryState charged --batteryLevel 100
+          xcrun simctl ui "$udid" content_size "$CONTENT_SIZE"
+          xcrun simctl ui "$udid" appearance "$APPEARANCE"
+      - name: Build and exercise native SwiftUI workspace
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild test \
+            -project iSH.xcodeproj -scheme iSH \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" \
+            -resultBundlePath "$GITHUB_WORKSPACE/artifacts/CodexPad-UI.xcresult" \
+            -only-testing:"iSHUITests/UITests/$TEST_METHOD" \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee artifacts/xcodebuild.log
+      - name: Capture failure diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          mkdir -p artifacts/diagnostics
+          xcrun simctl spawn "$SIMULATOR_UDID" log show --last 15m --style compact \
+            --predicate 'process == "CodexPad" OR process == "iSHUITests-Runner"' \
+            > artifacts/diagnostics/simulator.log 2>&1 || true
+      - name: Export native screenshots
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/screenshots
+          xcrun simctl io "$SIMULATOR_UDID" screenshot artifacts/screenshots/final.png || true
+          if test -d artifacts/CodexPad-UI.xcresult; then
+            xcrun xcresulttool export attachments \
+              --path artifacts/CodexPad-UI.xcresult \
+              --output-path artifacts/screenshots/attachments || true
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: CodexPad-UI-round1-${{ matrix.profile }}
+          path: artifacts
+          if-no-files-found: error
+          retention-days: 14
