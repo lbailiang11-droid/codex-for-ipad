@@ -330,6 +330,14 @@
 		CE130000000000000000000C /* CodexPadLinkAnchor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD200000000000000000000C /* CodexPadLinkAnchor.swift */; };
 		CE130000000000000000000D /* CodexFeatureCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD200000000000000000000D /* CodexFeatureCatalog.swift */; };
 		CE130000000000000000000E /* CodexFeatureCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD200000000000000000000E /* CodexFeatureCenterView.swift */; };
+		CF1000000000000000000001 /* CodexDiffModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2000000000000000000001 /* CodexDiffModels.swift */; };
+		CF1300000000000000000001 /* CodexDiffModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2000000000000000000001 /* CodexDiffModels.swift */; };
+		CF1000000000000000000002 /* CodexFilePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2000000000000000000002 /* CodexFilePreview.swift */; };
+		CF1300000000000000000002 /* CodexFilePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2000000000000000000002 /* CodexFilePreview.swift */; };
+		CF1000000000000000000003 /* CodexCodeRendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2000000000000000000003 /* CodexCodeRendering.swift */; };
+		CF1300000000000000000003 /* CodexCodeRendering.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2000000000000000000003 /* CodexCodeRendering.swift */; };
+		CF1000000000000000000004 /* CodexCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2000000000000000000004 /* CodexCodeView.swift */; };
+		CF1300000000000000000004 /* CodexCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2000000000000000000004 /* CodexCodeView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -869,6 +877,10 @@
 		BBFB557B215878C600DFE6DE /* UIApplication+OpenURL.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "UIApplication+OpenURL.m"; sourceTree = "<group>"; };
 		BBFB557E21587B6800DFE6DE /* ArrowBarButton.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ArrowBarButton.h; sourceTree = "<group>"; };
 		BBFB557F21587B6800DFE6DE /* ArrowBarButton.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ArrowBarButton.m; sourceTree = "<group>"; };
+		CF2000000000000000000001 /* CodexDiffModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexDiffModels.swift; sourceTree = "<group>"; };
+		CF2000000000000000000002 /* CodexFilePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexFilePreview.swift; sourceTree = "<group>"; };
+		CF2000000000000000000003 /* CodexCodeRendering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexCodeRendering.swift; sourceTree = "<group>"; };
+		CF2000000000000000000004 /* CodexCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexCodeView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1232,6 +1244,10 @@
 				CD2000000000000000000004 /* CodexWorkspaceModel.swift */,
 				CD2000000000000000000005 /* CodexTheme.swift */,
 				CD2000000000000000000006 /* CodexComponents.swift */,
+				CF2000000000000000000004 /* CodexCodeView.swift */,
+				CF2000000000000000000003 /* CodexCodeRendering.swift */,
+				CF2000000000000000000002 /* CodexFilePreview.swift */,
+				CF2000000000000000000001 /* CodexDiffModels.swift */,
 				CD2000000000000000000007 /* CodexConversationView.swift */,
 				CD2000000000000000000008 /* CodexWorkbenchView.swift */,
 				CD2000000000000000000009 /* CodexSettingsView.swift */,
@@ -2437,6 +2453,10 @@
 				CE1300000000000000000004 /* CodexWorkspaceModel.swift in Sources */,
 				CE1300000000000000000005 /* CodexTheme.swift in Sources */,
 				CE1300000000000000000006 /* CodexComponents.swift in Sources */,
+				CF1300000000000000000004 /* CodexCodeView.swift in Sources */,
+				CF1300000000000000000003 /* CodexCodeRendering.swift in Sources */,
+				CF1300000000000000000002 /* CodexFilePreview.swift in Sources */,
+				CF1300000000000000000001 /* CodexDiffModels.swift in Sources */,
 				CE1300000000000000000007 /* CodexConversationView.swift in Sources */,
 				CE1300000000000000000008 /* CodexWorkbenchView.swift in Sources */,
 				CE1300000000000000000009 /* CodexSettingsView.swift in Sources */,
@@ -2563,6 +2583,10 @@
 				CD1000000000000000000004 /* CodexWorkspaceModel.swift in Sources */,
 				CD1000000000000000000005 /* CodexTheme.swift in Sources */,
 				CD1000000000000000000006 /* CodexComponents.swift in Sources */,
+				CF1000000000000000000004 /* CodexCodeView.swift in Sources */,
+				CF1000000000000000000003 /* CodexCodeRendering.swift in Sources */,
+				CF1000000000000000000002 /* CodexFilePreview.swift in Sources */,
+				CF1000000000000000000001 /* CodexDiffModels.swift in Sources */,
 				CD1000000000000000000007 /* CodexConversationView.swift in Sources */,
 				CD1000000000000000000008 /* CodexWorkbenchView.swift in Sources */,
 				CD1000000000000000000009 /* CodexSettingsView.swift in Sources */,

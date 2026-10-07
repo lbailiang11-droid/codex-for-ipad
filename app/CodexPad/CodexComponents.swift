@@ -240,7 +240,7 @@ struct TimelineCard: View {
                     .padding(.vertical, 2)
             }
         } else {
-            TimelineBodyText(text: item.body)
+            TimelineBodyText(text: item.body, copyPrefix: "codexpad.timeline.\(item.id)")
         }
     }
 
@@ -340,27 +340,24 @@ struct TimelineCard: View {
     }
 }
 
-/// Body prose keeps its line breaks; fenced code scrolls independently instead
-/// of widening the conversation. Syntax highlighting remains a later phase.
+/// Body prose keeps its line breaks; fenced source uses the same native code
+/// renderer as file previews without widening the conversation.
 private struct TimelineBodyText: View {
     let text: String
+    let copyPrefix: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
                 switch block {
                 case .prose(let value):
                     prose(value)
-                case .code(let value):
-                    ScrollView(.horizontal) {
-                        Text(value)
-                            .font(.callout.monospaced())
-                            .fixedSize(horizontal: true, vertical: false)
-                            .textSelection(.enabled)
-                            .padding(12)
-                    }
-                    .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .accessibilityLabel("Code")
+                case .code(let value, let language):
+                    CodexCodeView(
+                        code: value,
+                        language: language,
+                        copyID: "\(copyPrefix).code.\(index)"
+                    )
                 }
             }
         }
@@ -413,45 +410,8 @@ private struct TimelineBodyText: View {
         return (value, .body, false)
     }
 
-    private enum Block {
-        case prose(String)
-        case code(String)
-    }
-
-    private var blocks: [Block] {
-        var result: [Block] = []
-        var lines: [String] = []
-        var fence: String?
-
-        for line in text.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let activeFence = fence {
-                let marker = activeFence.first!
-                let closingPrefix = trimmed.prefix(while: { $0 == marker })
-                let suffix = trimmed.dropFirst(closingPrefix.count)
-                if closingPrefix.count >= activeFence.count && suffix.trimmingCharacters(in: .whitespaces).isEmpty {
-                    result.append(.code(lines.joined(separator: "\n")))
-                    lines = []
-                    fence = nil
-                } else {
-                    lines.append(line)
-                }
-            } else if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
-                if !lines.isEmpty {
-                    result.append(.prose(lines.joined(separator: "\n")))
-                }
-                lines = []
-                let marker = trimmed.first!
-                fence = String(trimmed.prefix(while: { $0 == marker }))
-            } else {
-                lines.append(line)
-            }
-        }
-        if !lines.isEmpty {
-            let value = lines.joined(separator: "\n")
-            result.append(fence == nil ? .prose(value) : .code(value))
-        }
-        return result
+    private var blocks: [CodexMarkdownBlock] {
+        CodexCodeFences.blocks(in: text)
     }
 }
 

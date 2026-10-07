@@ -26,6 +26,8 @@ final class CodexWorkspaceModel: ObservableObject {
     @Published var directoryEntries: [WorkspaceEntry] = []
     @Published var filePreviewName: String?
     @Published var filePreview = ""
+    @Published var filePreviewIsTruncated = false
+    @Published var filePreviewIsBinary = false
     @Published var runtimeLog: [String] = []
     @Published var account = AccountSummary()
     @Published var composerText = ""
@@ -663,14 +665,19 @@ final class CodexWorkspaceModel: ObservableObject {
 
     func loadDirectory(_ path: String) async {
         guard enginePhase.isReady else { return }
+        if demoMode {
+            directoryPath = path
+            clearFilePreview()
+            directoryEntries = demoDirectoryEntries(path)
+            return
+        }
         do {
             let response = try await rpc.request(
                 method: "fs/readDirectory",
                 params: .object(["path": .string(path)])
             )
             directoryPath = path
-            filePreviewName = nil
-            filePreview = ""
+            clearFilePreview()
             directoryEntries = (response["entries"]?.arrayValue ?? []).compactMap { raw in
                 guard let name = raw["fileName"]?.stringValue else { return nil }
                 let child = path == "/" ? "/\(name)" : "\(path)/\(name)"
@@ -690,12 +697,28 @@ final class CodexWorkspaceModel: ObservableObject {
         }
     }
 
+    private func clearFilePreview() {
+        filePreviewName = nil
+        filePreview = ""
+        filePreviewIsTruncated = false
+        filePreviewIsBinary = false
+    }
+
     func openEntry(_ entry: WorkspaceEntry) async {
         if entry.isDirectory {
             await loadDirectory(entry.path)
             return
         }
         guard entry.isFile else { return }
+        if demoMode {
+            guard let data = demoFileData(entry.path) else { return }
+            let preview = CodexFilePreview.decode(data)
+            filePreviewName = entry.name
+            filePreview = preview.text
+            filePreviewIsTruncated = preview.isTruncated
+            filePreviewIsBinary = preview.isBinary
+            return
+        }
         do {
             let response = try await rpc.request(
                 method: "fs/readFile",
@@ -705,9 +728,11 @@ final class CodexWorkspaceModel: ObservableObject {
                   let data = Data(base64Encoded: encoded) else {
                 throw CodexRPCError(code: nil, message: "The file response was not valid base64")
             }
+            let preview = CodexFilePreview.decode(data)
             filePreviewName = entry.name
-            filePreview = String(data: Data(data.prefix(200_000)), encoding: .utf8)
-                ?? "Binary file — preview unavailable"
+            filePreview = preview.text
+            filePreviewIsTruncated = preview.isTruncated
+            filePreviewIsBinary = preview.isBinary
         } catch {
             report(error, context: "Could not open \(entry.name)")
         }
@@ -1618,6 +1643,90 @@ final class CodexWorkspaceModel: ObservableObject {
         ] : []
         if ProcessInfo.processInfo.arguments.contains("--codexpad-demo-long-model") {
             availableModels[0].displayName = "GPT-5.3-Codex · Native iPad long model name"
+        }
+        if ProcessInfo.processInfo.arguments.contains("--codexpad-demo-reading") {
+            seedDemoReadingWorkspace()
+        }
+    }
+
+    // Explicit native UI fixtures only; production filesystem reads remain RPC-backed.
+    private static let demoReadingRoot = "/root/workspace/reading-demo"
+    private static let demoReadingCode = "// 你好 👋\nlet greeting = \"Hello, iPad\"\nprint(greeting)\n"
+
+    private func seedDemoReadingWorkspace() {
+        threads[0].title = "代码与文件阅读 · Native reading workspace"
+        threads[0].cwd = Self.demoReadingRoot
+        threads[0].preview = "Native code, per-file Diff and file previews"
+        timelineByThread[threads[0].id] = [
+            TimelineItem(id: "reading-user", kind: .user, title: "You", body: "检查代码、文件和 Diff 的阅读体验。", detail: "", state: .completed, timestamp: .now.addingTimeInterval(-60)),
+            TimelineItem(id: "reading-code", kind: .agent, title: "Codex", body: "代码保留原始文本和换行，复制时不带行号。\n\n```swift\n" + Self.demoReadingCode + "```\n\nOpen Changes or Files to inspect the native reading views. This is explicit Demo data for UI verification.", detail: "", state: .completed, timestamp: .now)
+        ]
+        currentDiff = """
+        diff --git a/Sources/Welcome.swift b/Sources/Welcome.swift
+        index 1111111..2222222 100644
+        --- a/Sources/Welcome.swift
+        +++ b/Sources/Welcome.swift
+        @@ -1,3 +1,4 @@
+         struct Welcome {
+        -    let title = "Before"
+        +    let title = "你好, iPad"
+        +    let enabled = true
+         }
+        diff --git a/docs/guide.txt b/docs/guide.txt
+        index 3333333..4444444 100644
+        --- a/docs/guide.txt
+        +++ b/docs/guide.txt
+        @@ -1,2 +1,3 @@
+        -Old guide
+        +Readable guide
+         Plain text stays selectable.
+        +Copy preserves source.
+        diff --git a/notes/old name.txt b/notes/new name.txt
+        similarity index 100%
+        rename from notes/old name.txt
+        rename to notes/new name.txt
+        diff --git a/assets/sample image.bin b/assets/sample image.bin
+        index 5555555..6666666 100644
+        Binary files a/assets/sample image.bin and b/assets/sample image.bin differ
+        diff --git a/broken.txt b/broken.txt
+        index 7777777..8888888 100644
+        --- a/broken.txt
+        +++ b/broken.txt
+        @@ -1,3 +1,3 @@
+        -Incomplete before
+        +Incomplete after
+
+        """
+        directoryPath = Self.demoReadingRoot
+        clearFilePreview()
+        directoryEntries = demoDirectoryEntries(directoryPath)
+    }
+
+    private func demoDirectoryEntries(_ path: String) -> [WorkspaceEntry] {
+        let root = Self.demoReadingRoot
+        func entry(_ name: String, directory: Bool = false) -> WorkspaceEntry {
+            let child = path == "/" ? "/\(name)" : "\(path)/\(name)"
+            return WorkspaceEntry(id: child, name: name, path: child, isDirectory: directory, isFile: !directory)
+        }
+        if path == root {
+            return [entry("Sources", directory: true), entry("binary.bin"), entry("empty.txt"), entry("large.txt"), entry("notes.txt")]
+        }
+        if path == root + "/Sources" { return [entry("Welcome.swift")] }
+        if path == (root as NSString).deletingLastPathComponent { return [entry("reading-demo", directory: true)] }
+        return []
+    }
+
+    private func demoFileData(_ path: String) -> Data? {
+        switch path {
+        case Self.demoReadingRoot + "/Sources/Welcome.swift": return Data(Self.demoReadingCode.utf8)
+        case Self.demoReadingRoot + "/notes.txt": return Data("CodexPad reading workspace.\nText stays selectable.\n".utf8)
+        case Self.demoReadingRoot + "/empty.txt": return Data()
+        case Self.demoReadingRoot + "/binary.bin": return Data([0, 255, 254, 128])
+        case Self.demoReadingRoot + "/large.txt":
+            // 199,999 ASCII bytes, then a Chinese scalar straddling the 200 KB cap.
+            let prefix = String(repeating: "Readable preview line.\n", count: 8_695)
+            return Data((prefix + String(repeating: "x", count: 199_999 - prefix.utf8.count) + "你\nend\n").utf8)
+        default: return nil
         }
     }
 }

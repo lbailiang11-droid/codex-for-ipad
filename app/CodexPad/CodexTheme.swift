@@ -13,6 +13,15 @@ enum CodexPalette {
     static let teal = Color.dynamic(light: 0x287D78, dark: 0x62C8BE)
     static let amber = Color.dynamic(light: 0x9A5C20, dark: 0xF0B266)
     static let danger = Color.dynamic(light: 0xB83F4A, dark: 0xFF8992)
+    static let diffAddedSurface = Color.dynamic(light: 0xEAF4ED, dark: 0x1B3126)
+    static let diffRemovedSurface = Color.dynamic(light: 0xFAEBEE, dark: 0x3A232C)
+    static let diffAddedInk = Color.dynamic(light: 0x206343, dark: 0x8DDDAB)
+    static let diffRemovedInk = Color.dynamic(light: 0x993044, dark: 0xFFADB7)
+    static let syntaxKeyword = cobalt
+    static let syntaxString = Color.dynamic(light: 0x1F6B4E, dark: 0x9FD6AB)
+    static let syntaxNumber = Color.dynamic(light: 0x905212, dark: 0xEBC58B)
+    static let syntaxComment = Color.dynamic(light: 0x5E6874, dark: 0xAFB8C7)
+    static let syntaxType = Color.dynamic(light: 0x7052A3, dark: 0xC7B0ED)
 }
 
 enum CodexLayout {
