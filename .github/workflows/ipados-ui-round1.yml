@@ -2,6 +2,17 @@ name: CodexPad native UI round 1
 
 on:
   workflow_dispatch:
+    inputs:
+      profile:
+        description: Native profile to verify
+        type: choice
+        default: all
+        options:
+          - all
+          - 11-inch-light
+          - 11-inch-dark
+          - 11-inch-narrow-container
+          - 11-inch-accessibility-XXL
   push:
     branches: [codex/ui-round1]
     paths:
@@ -25,28 +36,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - profile: 11-inch-light
-            appearance: light
-            content_size: large
-            test_method: testRoundOneLight
-          - profile: 11-inch-dark
-            appearance: dark
-            content_size: large
-            test_method: testRoundOneDark
-          - profile: 11-inch-narrow-container
-            appearance: light
-            content_size: large
-            test_method: testRoundOneNarrowContainer
-          - profile: 11-inch-accessibility-XXL
-            appearance: dark
-            content_size: accessibility-extra-extra-large
-            test_method: testRoundOneAccessibility
+        profile: ${{ fromJSON(inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["11-inch-light","11-inch-dark","11-inch-narrow-container","11-inch-accessibility-XXL"]') }}
     env:
       PROFILE: ${{ matrix.profile }}
-      APPEARANCE: ${{ matrix.appearance }}
-      CONTENT_SIZE: ${{ matrix.content_size }}
-      TEST_METHOD: ${{ matrix.test_method }}
+      APPEARANCE: ${{ (matrix.profile == '11-inch-dark' || matrix.profile == '11-inch-accessibility-XXL') && 'dark' || 'light' }}
+      CONTENT_SIZE: ${{ matrix.profile == '11-inch-accessibility-XXL' && 'accessibility-extra-extra-large' || 'large' }}
+      TEST_METHOD: ${{ matrix.profile == '11-inch-light' && 'testRoundOneLight' || matrix.profile == '11-inch-dark' && 'testRoundOneDark' || matrix.profile == '11-inch-narrow-container' && 'testRoundOneNarrowContainer' || 'testRoundOneAccessibility' }}
     steps:
       - uses: actions/checkout@v4
         with:

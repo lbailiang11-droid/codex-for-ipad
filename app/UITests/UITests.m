@@ -115,10 +115,26 @@
     XCTAssertEqualObjects(composer.value, @"After send after stop after terminal after new chat");
     // Selecting a seeded thread must update the conversation, preserve the
     // existing composer draft, and return desktop input to that composer.
-    XCUIElement *otherThread = [self visibleThreadWithID:@"demo-2" inApp:app];
-    if (otherThread == nil) {
+    // The soft keyboard reduces the sidebar List's height. A newly prepended
+    // chat can put this real row outside its materialized viewport. Scroll
+    // the native List rather than treating an offscreen row as a hidden sidebar.
+    XCUIElement *threadList = app.collectionViews.firstMatch;
+    if (!threadList.isHittable) {
         [[self visibleButton:@"codexpad.threads" inApp:app] tap];
+        threadList = app.collectionViews.firstMatch;
+    }
+    XCTAssertTrue(threadList.isHittable);
+    XCUIElement *otherThread = [self visibleThreadWithID:@"demo-2" inApp:app];
+    for (NSUInteger attempt = 0; attempt < 8 && otherThread == nil; attempt++) {
+        [threadList swipeUpWithVelocity:XCUIGestureVelocitySlow];
         otherThread = [self visibleThreadWithID:@"demo-2" inApp:app];
+    }
+    if (otherThread == nil) {
+        [self attachScreen:@"11-inch-light-thread-switch-row-missing"];
+        XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
+        tree.name = @"native-thread-switch-accessibility-tree";
+        tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:tree];
     }
     XCTAssertNotNil(otherThread);
     [otherThread tap];
