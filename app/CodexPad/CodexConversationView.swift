@@ -55,6 +55,7 @@ struct CodexConversationView: View {
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(CodexPalette.ink)
                         .lineLimit(2)
+                        .accessibilityIdentifier("codexpad.conversation-title")
                     Label(thread.cwd, systemImage: "folder")
                         .font(.caption.monospaced())
                         .foregroundStyle(CodexPalette.secondaryInk)

@@ -10,6 +10,7 @@
 @interface UITests : XCTestCase
 - (XCUIElement *)visibleButton:(NSString *)identifier inApp:(XCUIApplication *)app;
 - (XCUIElement *)visibleThreadWithID:(NSString *)threadID inApp:(XCUIApplication *)app;
+- (void)assertConversationTitle:(NSString *)title inApp:(XCUIApplication *)app;
 - (void)attachScreen:(NSString *)name;
 - (void)exercisePortraitAndLandscape:(XCUIApplication *)app;
 - (void)exerciseWorkbench:(XCUIApplication *)app name:(NSString *)name;
@@ -109,7 +110,7 @@
     XCUIElement *create = [self visibleButton:@"codexpad.new-thread" inApp:app];
     XCTAssertNotNil(create);
     [create tap];
-    XCTAssertTrue([app.staticTexts[@"New demo chat"] waitForExistenceWithTimeout:5]);
+    [self assertConversationTitle:@"New demo chat" inApp:app];
     [app typeText:@" after new chat"];
     XCTAssertEqualObjects(composer.value, @"After send after stop after terminal after new chat");
     // Selecting a seeded thread must update the conversation, preserve the
@@ -121,7 +122,7 @@
     }
     XCTAssertNotNil(otherThread);
     [otherThread tap];
-    XCTAssertTrue([app.staticTexts[@"Audit iPad accessibility"] waitForExistenceWithTimeout:5]);
+    [self assertConversationTitle:@"Audit iPad accessibility" inApp:app];
     [app typeText:@" after switching"];
     XCTAssertEqualObjects(composer.value, @"After send after stop after terminal after new chat after switching");
     XCTAssertFalse(app.buttons[@"codexpad.stop"].exists);
@@ -247,6 +248,15 @@
         if (candidate.isHittable) return candidate;
     }
     return nil;
+}
+
+- (void)assertConversationTitle:(NSString *)title inApp:(XCUIApplication *)app {
+    // A matching sidebar title exists before selection. Require the actual
+    // conversation header to change, rather than accepting that duplicate.
+    XCUIElement *header = app.staticTexts[@"codexpad.conversation-title"];
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"exists == YES AND label == %@", title];
+    XCTNSPredicateExpectation *changed = [[XCTNSPredicateExpectation alloc] initWithPredicate:predicate object:header];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[changed] timeout:5], XCTWaiterResultCompleted);
 }
 
 - (void)attachScreen:(NSString *)name {
