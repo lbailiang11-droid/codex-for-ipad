@@ -92,6 +92,7 @@ struct ThreadRow: View {
         .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(thread.title), \(activityLabel), \(thread.cwd)")
+        .accessibilityIdentifier("codexpad.thread.\(thread.id)")
     }
 
     private var activityIcon: String {

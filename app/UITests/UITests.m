@@ -9,7 +9,7 @@
 
 @interface UITests : XCTestCase
 - (XCUIElement *)visibleButton:(NSString *)identifier inApp:(XCUIApplication *)app;
-- (XCUIElement *)visibleThreadWithTitle:(NSString *)title inApp:(XCUIApplication *)app;
+- (XCUIElement *)visibleThreadWithID:(NSString *)threadID inApp:(XCUIApplication *)app;
 - (void)attachScreen:(NSString *)name;
 - (void)exercisePortraitAndLandscape:(XCUIApplication *)app;
 - (void)exerciseWorkbench:(XCUIApplication *)app name:(NSString *)name;
@@ -114,10 +114,10 @@
     XCTAssertEqualObjects(composer.value, @"After send after stop after terminal after new chat");
     // Selecting a seeded thread must update the conversation, preserve the
     // existing composer draft, and return desktop input to that composer.
-    XCUIElement *otherThread = [self visibleThreadWithTitle:@"Audit iPad accessibility" inApp:app];
+    XCUIElement *otherThread = [self visibleThreadWithID:@"demo-2" inApp:app];
     if (otherThread == nil) {
         [[self visibleButton:@"codexpad.threads" inApp:app] tap];
-        otherThread = [self visibleThreadWithTitle:@"Audit iPad accessibility" inApp:app];
+        otherThread = [self visibleThreadWithID:@"demo-2" inApp:app];
     }
     XCTAssertNotNil(otherThread);
     [otherThread tap];
@@ -236,16 +236,12 @@
     return nil;
 }
 
-- (XCUIElement *)visibleThreadWithTitle:(NSString *)title inApp:(XCUIApplication *)app {
-    // ThreadRow combines its title, state and workspace into its native label.
-    // Find that live row rather than using fixed coordinates or its title text
-    // in the conversation header.
-    // List's selection wrapper may expose only the visible title instead of
-    // ThreadRow's full combined label on iPadOS 26. The currently selected
-    // conversation is "New demo chat", so this title uniquely identifies
-    // the seeded sidebar row without depending on a hidden path attribute.
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"label BEGINSWITH %@", title];
-    XCUIElementQuery *matches = [[app descendantsMatchingType:XCUIElementTypeAny] matchingPredicate:predicate];
+- (XCUIElement *)visibleThreadWithID:(NSString *)threadID inApp:(XCUIApplication *)app {
+    // Use the real session ID so the query survives combined accessibility
+    // labels and native List selection wrappers. Inspect the live hierarchy
+    // after opening the sidebar instead of caching a previously hidden row.
+    NSString *identifier = [@"codexpad.thread." stringByAppendingString:threadID];
+    XCUIElementQuery *matches = [[app descendantsMatchingType:XCUIElementTypeAny] matchingIdentifier:identifier];
     for (NSUInteger index = 0; index < matches.count; index++) {
         XCUIElement *candidate = [matches elementBoundByIndex:index];
         if (candidate.isHittable) return candidate;

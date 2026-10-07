@@ -290,6 +290,7 @@ struct CodexPadRootView: View {
             .frame(minHeight: 54)
             .background(CodexPalette.surface)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("codexpad.sidebar")
         .background(CodexPalette.canvas)
         .navigationTitle("")
