@@ -237,8 +237,8 @@ runs never crossed the 1280pt inspector threshold. Production UI and runtime
 remain unchanged unless new evidence establishes a defect. The existing
 build 805 IPA can be reused while App/project sources match `4f47705`.
 
-The test plan and evidence limits are in `tests/codexpad_ui_round4/README.md`.
-Actual results will be recorded after CI, separately from physical-device,
+The test plan, actual staged results and evidence limits are in
+`tests/codexpad_ui_round4/README.md`, separately from physical-device,
 real Stage Manager, hardware-keyboard and long-connection validation.
 
 Three recorded native attempts established the workbench transitions and
@@ -253,5 +253,48 @@ uses public scroll geometry and phase callbacks, with a Bool end threshold
 and both event orders handled. Actual user scrolling away pauses following;
 idle content growth, resize and programmatic movement do not do so alone.
 iOS 17 retains the original fallback and deployment target, and remains
-unverified. Native reading-only verification and a new ARM64 IPA are required
-for this changed application source. RPC/runtime/permissions are unchanged.
+unverified. Native reading-only run `37770366433` at `b84a29f` passed:
+1 test, 0 failures, 188.974 seconds. Original pixels show reachable Latest
+across landscape/portrait/landscape and the complete final paragraph after
+an actual Latest tap. Actual toolbar Hide followed by App-level typing also
+passed; five original PNGs and frame/AX records are retained.
+
+That Hide image exposed a separate first-line input clip despite its complete
+three-line AX value. `01b3002` removes only composer `.lineSpacing(4)` and uses
+one targeted Hide/input check, rather than rerunning the passed reading or
+prior UI matrices. The system body font, multiline range, binding, focus and
+send/stop semantics remain intact. The exact native intrinsic/content-height
+cause is not claimed established. Final ARM64 Release run `37772887105`
+at `01b3002` and its existing RPC regressions passed; the unsigned build805
+package has not been signed or installed. RPC/runtime/permissions are unchanged.
+
+The first input-only run `37772879090` failed its 10-second pre-workbench
+actual-value wait in 86.282 seconds. Later original AX text exactly equals
+the expected 40-character draft; the original PNG shows the first line intact.
+The Hide path was not reached. `1cc46ad` changes only the two input-value
+timeouts to 30 seconds, preserving exact equality and actual interaction.
+App/project sources still match the final package, so no extra ARM64 build
+is dispatched. Original failure provenance and evidence are retained.
+
+Retry `37775371303` / `1cc46ad` failed before typing in 103.079 seconds at
+the 10-second landscape readiness wait. Later original frames and pixels
+show the correct real 1376x1032 landscape workspace. `762fbeb` extends only
+Round4 readiness bounds to 30 seconds and logs actual frames, retaining
+strict dimensions and real input conditions. No production layout change
+or repeated ARM64 build is justified by this readiness failure.
+
+Final targeted input run `37777595828` / test source `762fbeb` passed:
+1 test, 0 failures, 110.388 seconds, artifact `11551007137`. Its App/project
+trees match package source `01b3002`. Both original images show all three
+lines, including the complete suffix after toolbar Hide, without first-line
+clipping or covered model/send controls. Actual App-level typing and draft
+retention passed without retapping the composer after the panel closed.
+
+All seventeen original PNGs and frame/AX records retain exact bytes and
+SHA-256 matches; the five failed runs remain failed. Source identities stay
+separate: previous window/Done assertions, b84a29f reading, final01b3002
+input/package. There was no single full latest-source Round4 flow. The full
+GitHub artifacts and local PNG/text/context/log evidence are preserved.
+Physical iPad, iOS17 fallback, hardware keyboard, real Stage Manager/Split
+View, streaming content and live login/files/approvals/connections remain
+outside this simulator acceptance. No physical device or desktop was controlled.

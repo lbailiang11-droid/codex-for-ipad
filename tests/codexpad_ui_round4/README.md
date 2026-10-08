@@ -24,11 +24,12 @@ records its name/runtime and source commit, and saves the xcresult, screenshots
 and failure diagnostics. Only this new flow is selected. Previous Settings,
 parser, Diff and accessibility suites are not repeated.
 
-Production App/project changes are not planned without an actual failing
-interaction or a demonstrated code defect. If App sources remain identical
-to `4f47705`, the previous unsigned build 805 IPA is retained without a
-duplicate ARM64 build. Native UI test source can differ from package source;
-these identities must be recorded separately.
+The initial plan required an actual failing interaction or demonstrated
+defect before changing production sources. The first three runs retained
+App/project sources identical to `4f47705` and reused its package. Subsequent
+real Latest and input-clipping findings justified narrow production fixes
+and new packages. Native test and package source identities are recorded
+separately; no prior failed run is relabeled successful.
 
 SwiftUI inspector presentation is context-dependent according to
 [Apple's inspector documentation](https://developer.apple.com/documentation/swiftui/view/inspector(ispresented:content:)).
@@ -92,7 +93,86 @@ target and original preference fallback remain unchanged; that fallback has
 not been validated here. The precise old preference-callback failure was
 not instrumented and is not claimed established.
 
-The same reading-only interaction will validate this production fix. A new
-ARM64 package is now required; the previous build cannot contain the fix.
-Results remain pending execution. No model/RPC/runtime/permission changes
-are included.
+The same reading-only interaction passed in
+[37770366433](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37770366433)
+at `b84a29f`: 1 test, 0 failures, 188.974 seconds, job `113288199825`,
+artifact `11547497593`. Actual earlier-content scrolling exposes reachable
+Latest; portrait/landscape rotation retains reading above the final paragraph;
+tapping Latest returns the full final paragraph. Actual Files selection and
+toolbar Hide preserve the draft and permit App-level input without retapping
+the composer. Five original PNGs and five frame/AX records are preserved.
+
+Pixel review of those originals found a separate input-layout issue: the
+Hide screenshot shows the complete second line and third-line suffix, but
+the first line's top is clipped. The complete AX value does not prove that
+all three lines are simultaneously visible. The TextField's 61pt height is
+consistent with default body metrics, while `.lineSpacing(4)` requires more
+vertical space; the precise native intrinsic/content-height cause was not
+instrumented.
+
+`01b3002` removes only the composer's extra line spacing. It retains the body
+font, vertical input, `lineLimit(1...7)`, text binding, focus and all actions.
+Manual `toolbar-hide-only` selects `testRoundFourToolbarHideRemaining`, using
+the same shared actual Hide/input sequence and recording before/after PNGs
+only after the complete real value is present. This narrow check does not
+repeat the just-passed reading or workbench rotations. The final App source
+has its own successful ARM64 Release package from
+[37772887105](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37772887105),
+job `113296537498`, artifact `11548528820`, at `01b3002`. Existing RPC
+regressions passed. The unsigned build 805 IPA has SHA-256
+`7ae728b685434bee93e122b8b6657925e7b74cbcd45a0a7f7c900143880442ff`
+and 5,888,242 bytes. It is not signed or installed. The b84a29f intermediate
+package remains historical. No model/RPC/runtime/permission changes are included.
+
+The first input-only run
+[37772879090](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37772879090)
+at `01b3002` remains failed: 1 test, 1 failure in 86.282 seconds, artifact
+`11549945909`. Its 10-second actual-value wait expired before the workbench
+opened. The later original UTF-8 value is exactly the expected 40-character
+draft, and the original failure PNG shows all three lines intact, including
+the first. This proves the displayed pre-Hide layout, not the unexecuted
+Hide interaction. The missing intermediate AX-value sequence is not inferred.
+
+`1cc46ad` changes only two input-value waits to 30 seconds; other waits remain
+10 seconds. Exact value equality, real input and the no-composer-retap Hide
+condition remain unchanged. There is no forced delay, repeated input or
+binding replacement. App/project sources still match the `01b3002` package;
+another ARM64 build is unnecessary. Only the same input-only flow is retried.
+
+Retry [37775371303](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37775371303)
+at `1cc46ad` also remains failed: 1 test, 1 failure in 103.079 seconds,
+artifact `11550181522`. The 10-second landscape readiness wait expired
+before typing began. Later original workspace/window frames are both
+1376x1032 with orientation3, and the original PNG shows landscape. This
+does not establish the earlier AX callback sequence or a production layout
+defect. `762fbeb` gives all Round4 readiness predicates a bounded 30-second
+wait and logs actual measured frames. Size thresholds and exact input
+conditions stay unchanged; other rounds' helpers are not changed. App and
+project sources still match the final `01b3002` package.
+
+## Final targeted input acceptance
+
+[37777595828](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37777595828)
+at test source `762fbeb` passed: 1 test, 0 failures, 110.388 seconds,
+job `113312265597`, artifact `11551007137`. App/project trees exactly match
+the final package source `01b3002`; only the test driver changed.
+
+Both original PNGs show all three lines fully visible simultaneously.
+The post-Hide image also shows the complete `after toolbar Hide` suffix;
+the model, reasoning, More and send controls remain visible and do not
+overlap the input or keyboard. Actual complete-value assertions and frame
+records confirm original-draft retention and continued App-level typing
+without a composer retap after real Files selection and toolbar Hide.
+
+Seventeen original PNGs and seventeen frame/AX records are preserved in
+the task's separate `outputs/CodexPad-UI-Round4` directory, each copy
+byte/SHA-256 matched: ten from the five failed runs, five from successful
+reading, two from successful input. Failed runs remain failed. The full
+xcresult/video artifacts are retained by GitHub; local evidence downloads
+only the original PNG/text attachments, context and logs.
+
+Reading evidence is from `b84a29f`; window/Done evidence is from the earlier
+`4f47705` App source; input/package evidence is from `01b3002` App source.
+No single full Round4 flow on the final source was executed or claimed.
+Physical 11-inch iPad, iOS17 fallback, hardware keyboard, real window
+resizing, streaming updates and live connections remain unverified.
