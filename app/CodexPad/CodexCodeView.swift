@@ -89,6 +89,7 @@ struct CodexCodeView: View {
         }
         .onDisappear {
             copyFeedbackTask?.cancel()
+            copied = false
         }
     }
 

@@ -120,3 +120,19 @@ Physical iPad behavior, hardware keyboards, dynamic Stage Manager resizing,
 real server connectivity, RPC/filesystem operations and ARM64 runtime stability
 remain separate unverified conditions. This workflow does not operate the
 connected iPad.
+
+## Independent acceptance follow-up
+
+Review of delivered source `dd5a1d6` found no blocking round-two regression.
+A non-blocking code-copy feedback issue was fixed by resetting `copied` when
+the view disappears, alongside cancellation of its feedback timer. The actual
+clipboard operation is unchanged. This small follow-up passed `git diff --check`;
+native tests/build were not rerun, and the existing unsigned package remains
+the validated `1ce2def` build without this follow-up. Include it in the next
+UI-stage native build rather than repeating the full reading suite now.
+
+The model's unconditional application of a file/directory RPC result after
+navigation is an inherited risk already present in `781f5e3`, rather than a
+round-two regression. Large code/raw-Diff rendering at accessibility XXL also
+remains unverified; similarity to the corrected plain-text issue is not proof
+of a reproduced defect.
