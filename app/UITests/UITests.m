@@ -6,6 +6,7 @@
 //
 
 #import <XCTest/XCTest.h>
+#import <math.h>
 
 @interface UITests : XCTestCase
 - (XCUIElement *)visibleButton:(NSString *)identifier inApp:(XCUIApplication *)app;
@@ -37,12 +38,30 @@
 - (void)exerciseRoundThreeFocus:(XCUIApplication *)app name:(NSString *)name;
 - (void)exerciseRoundThreeStateVariants;
 - (void)dismissRoundThreeKeyboard:(XCUIApplication *)app;
+@property (nonatomic, strong) XCUIApplication *roundFourApp;
+- (void)waitForRoundFour:(BOOL (^)(void))condition message:(NSString *)message;
+- (CGRect)roundFourWindowFrame:(XCUIApplication *)app;
+- (void)assertRoundFourWindow:(XCUIApplication *)app landscape:(BOOL)landscape;
+- (void)assertRoundFourWorkbench:(XCUIApplication *)app inspector:(BOOL)inspector;
+- (void)attachRoundFourState:(XCUIApplication *)app name:(NSString *)name;
 @end
 
 @implementation UITests
 
 - (void)setUp {
     self.continueAfterFailure = NO;
+}
+
+- (void)recordIssue:(XCTIssue *)issue {
+    // Preserve the App at every round-four assertion/interaction failure,
+    // including a typeText exception, before XCTest tears down the process.
+    if (self.roundFourApp != nil) {
+        XCUIApplication *app = self.roundFourApp;
+        self.roundFourApp = nil; // A diagnostic lookup must not recurse here.
+        [self attachRoundFourState:app name:@"round4-failure"];
+        self.roundFourApp = app;
+    }
+    [super recordIssue:issue];
 }
 
 - (void)setRoundThreeSwitch:(XCUIElement *)control value:(NSString *)value inApp:(XCUIApplication *)app {
@@ -248,6 +267,245 @@
     [self attachScreen:@"11-inch-dark-accessibility-XXL-pending-approval"];
     [allow tap];
     XCTAssertTrue([allow waitForNonExistenceWithTimeout:5]);
+}
+
+- (void)testRoundFourWindowTransitions {
+    // The runner must select a real 13-inch simulator. No demo-width override:
+    // a smaller hosting container cannot prove the native inspector path.
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-desktop-mode", @"--codexpad-demo-reading"]];
+    self.roundFourApp = app;
+    XCUIElement *hostingWorkspace = [self roundTwoElement:@"codexpad.workspace" inApp:app];
+    XCUIElement *mainWindow = app.windows.firstMatch;
+    XCTAssertTrue(mainWindow.exists && hostingWorkspace.exists);
+    XCTAssertEqualWithAccuracy(hostingWorkspace.frame.size.width, mainWindow.frame.size.width, 2,
+        @"The real hosting workspace must fill the native window before modal AX hiding can use the window measurement");
+    [self assertRoundFourWindow:app landscape:YES];
+    XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
+    NSString *draft = @"Round four window draft\n第二行保留\nThird line";
+    XCTAssertTrue(composer.isHittable);
+    [composer tap];
+    [composer typeText:draft];
+    XCTAssertEqualObjects(composer.value, draft);
+    [self dismissRoundThreeKeyboard:app];
+    [self attachRoundFourState:app name:@"round4-13-inch-landscape-draft"];
+
+    [self openRoundTwoWorkbench:app];
+    [self assertRoundFourWorkbench:app inspector:YES];
+    XCUIElement *files = [self visibleButton:@"Files" inApp:app];
+    XCTAssertNotNil(files);
+    [files tap];
+    [self waitForRoundFour:^BOOL {
+        XCUIElement *tab = [self visibleButton:@"Files" inApp:app];
+        return tab != nil && tab.isSelected
+            && [self visibleButton:@"codexpad.files-refresh" inApp:app] != nil;
+    } message:@"An actual Files tap must select the model's workbench tab and display its native controls"];
+    [self attachRoundFourState:app name:@"round4-13-inch-landscape-files-inspector"];
+
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationPortrait;
+    [self assertRoundFourWindow:app landscape:NO];
+    [self assertRoundFourWorkbench:app inspector:NO];
+    [self waitForRoundFour:^BOOL {
+        XCUIElement *tab = [self visibleButton:@"Files" inApp:app];
+        return tab != nil && tab.isSelected
+            && [self visibleButton:@"codexpad.files-refresh" inApp:app] != nil;
+    } message:@"Rotation must keep the open workbench and selected Files tab in the native sheet"];
+    [self attachRoundFourState:app name:@"round4-13-inch-portrait-files-sheet"];
+
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    [self assertRoundFourWindow:app landscape:YES];
+    [self assertRoundFourWorkbench:app inspector:YES];
+    [self waitForRoundFour:^BOOL {
+        XCUIElement *tab = [self visibleButton:@"Files" inApp:app];
+        return tab != nil && tab.isSelected
+            && [self visibleButton:@"codexpad.files-refresh" inApp:app] != nil;
+    } message:@"Returning to landscape must restore the inspector with the same model tab"];
+    [self attachRoundFourState:app name:@"round4-13-inch-landscape-files-inspector-returned"];
+
+    XCUIElement *done = [self visibleButton:@"codexpad.close-workbench" inApp:app];
+    XCTAssertNotNil(done);
+    XCTAssertEqualObjects(done.label, @"Done");
+    [done tap];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.workbench" inApp:app] waitForNonExistenceWithTimeout:5]);
+    XCTAssertEqualObjects(composer.value, draft);
+    [app typeText:@" after Done"];
+    XCTAssertEqualObjects(composer.value, [draft stringByAppendingString:@" after Done"],
+        @"App-level typing without tapping the composer must prove that Done restores its input focus");
+    [self dismissRoundThreeKeyboard:app];
+    [self attachRoundFourState:app name:@"round4-13-inch-done-draft-and-focus"];
+    [app terminate];
+    self.roundFourApp = nil;
+
+    // Expand the existing completed output through its real disclosure control
+    // to make a long conversation. No sent prompt, RPC or invented reply.
+    app = [self launchDemo:@[@"--codexpad-desktop-mode"]];
+    self.roundFourApp = app;
+    [self assertRoundFourWindow:app landscape:YES];
+    XCUIElement *timeline = app.scrollViews.firstMatch;
+    XCTAssertTrue(timeline.isHittable);
+    XCUIElement *output = app.buttons[@"Show output"];
+    for (NSUInteger attempt = 0; attempt < 8 && !output.isHittable; attempt++) {
+        [timeline swipeDownWithVelocity:XCUIGestureVelocitySlow];
+    }
+    XCTAssertTrue(output.isHittable);
+    [output tap];
+    XCUIElement *lastParagraph = [app.staticTexts matchingPredicate:
+        [NSPredicate predicateWithFormat:@"label BEGINSWITH %@", @"正文应自然换行，长代码应横向滚动。"]].firstMatch;
+    [self waitForRoundFour:^BOOL {
+        return [self visibleButton:@"codexpad.latest-message" inApp:app] != nil || lastParagraph.isHittable;
+    } message:@"The expanded conversation must expose Latest or its actual final paragraph"];
+    XCUIElement *latest = [self visibleButton:@"codexpad.latest-message" inApp:app];
+    if (latest != nil) [latest tap];
+    [self waitForRoundFour:^BOOL {
+        return lastParagraph.isHittable && !app.buttons[@"codexpad.latest-message"].exists;
+    } message:@"Establish the actual conversation bottom before scrolling to earlier content"];
+
+    XCUIElement *earlierParagraph = [app.staticTexts matchingPredicate:
+        [NSPredicate predicateWithFormat:@"label BEGINSWITH %@", @"整理这个工作台的阅读层次。"]].firstMatch;
+    for (NSUInteger attempt = 0; attempt < 8 && !earlierParagraph.isHittable; attempt++) {
+        [timeline swipeDownWithVelocity:XCUIGestureVelocitySlow];
+    }
+    [self waitForRoundFour:^BOOL {
+        return earlierParagraph.isHittable && !lastParagraph.isHittable
+            && [self visibleButton:@"codexpad.latest-message" inApp:app] != nil;
+    } message:@"Real upward scrolling must reveal earlier content and the reachable Latest action"];
+    [self attachRoundFourState:app name:@"round4-13-inch-long-conversation-scrolled-up"];
+
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationPortrait;
+    [self assertRoundFourWindow:app landscape:NO];
+    [self waitForRoundFour:^BOOL {
+        return !lastParagraph.isHittable && [self visibleButton:@"codexpad.latest-message" inApp:app] != nil;
+    } message:@"Portrait rotation must preserve the reader's position above the latest message"];
+    [self attachRoundFourState:app name:@"round4-13-inch-portrait-scrolled-up-latest"];
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    [self assertRoundFourWindow:app landscape:YES];
+    [self waitForRoundFour:^BOOL {
+        return !lastParagraph.isHittable && [self visibleButton:@"codexpad.latest-message" inApp:app] != nil;
+    } message:@"Landscape rotation must keep Latest available without forcing the reader to the bottom"];
+    [self attachRoundFourState:app name:@"round4-13-inch-landscape-scrolled-up-latest"];
+    [[self visibleButton:@"codexpad.latest-message" inApp:app] tap];
+    [self waitForRoundFour:^BOOL {
+        if (!lastParagraph.exists || !lastParagraph.isHittable) return NO;
+        CGRect visible = CGRectIntersection(lastParagraph.frame, timeline.frame);
+        return CGRectGetHeight(visible) >= CGRectGetHeight(lastParagraph.frame) - 2
+            && !app.buttons[@"codexpad.latest-message"].exists;
+    } message:@"Tapping Latest must reveal the actual final paragraph in the conversation viewport"];
+    [self attachRoundFourState:app name:@"round4-13-inch-latest-returned-to-bottom"];
+
+    // Keep this separate close path last so its focus result cannot obscure
+    // the already-captured window and reading-position acceptance evidence.
+    composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
+    [composer tap];
+    [composer typeText:draft];
+    XCTAssertEqualObjects(composer.value, draft);
+    [self dismissRoundThreeKeyboard:app];
+    [self openRoundTwoWorkbench:app];
+    [self assertRoundFourWorkbench:app inspector:YES];
+    files = [self visibleButton:@"Files" inApp:app];
+    XCTAssertNotNil(files);
+    [files tap];
+    [self waitForRoundFour:^BOOL {
+        XCUIElement *tab = [self visibleButton:@"Files" inApp:app];
+        return tab != nil && tab.isSelected
+            && [self visibleButton:@"codexpad.files-refresh" inApp:app] != nil;
+    } message:@"Interact with a real workbench control before testing the toolbar close path"];
+    XCUIElement *hide = [self visibleButton:@"codexpad.toggle-workbench" inApp:app];
+    XCTAssertNotNil(hide);
+    XCTAssertEqualObjects(hide.value, @"Shown");
+    [hide tap];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.workbench" inApp:app] waitForNonExistenceWithTimeout:5]);
+    [app typeText:@" after toolbar Hide"];
+    XCTAssertEqualObjects(composer.value, [draft stringByAppendingString:@" after toolbar Hide"],
+        @"App-level typing must also prove input focus and draft retention after toolbar Hide");
+    [self attachRoundFourState:app name:@"round4-13-inch-toolbar-hide-draft-and-focus"];
+    [app terminate];
+    self.roundFourApp = nil;
+}
+
+- (void)waitForRoundFour:(BOOL (^)(void))condition message:(NSString *)message {
+    NSPredicate *predicate = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        return condition();
+    }];
+    XCTNSPredicateExpectation *ready = [[XCTNSPredicateExpectation alloc] initWithPredicate:predicate object:self.roundFourApp];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[ready] timeout:10], XCTWaiterResultCompleted, @"%@", message);
+}
+
+- (void)assertRoundFourWindow:(XCUIApplication *)app landscape:(BOOL)landscape {
+    [self waitForRoundFour:^BOOL {
+        CGRect frame = [self roundFourWindowFrame:app];
+        return (landscape
+            ? frame.size.width >= 1280 && frame.size.width > frame.size.height
+            : frame.size.width < 1280 && frame.size.width < frame.size.height);
+    } message:landscape ? @"Require an actual 13-inch landscape workspace at or above the 1280-point inspector threshold"
+        : @"Require the actual portrait workspace to rotate below the inspector threshold"];
+}
+
+- (CGRect)roundFourWindowFrame:(XCUIApplication *)app {
+    XCUIElement *workspace = [self roundTwoElement:@"codexpad.workspace" inApp:app];
+    if (workspace.exists) return workspace.frame;
+    // A native modal can hide the underlying hosting view from AX. The launch
+    // assertion establishes that its real width matches this native window.
+    XCUIElement *window = app.windows.firstMatch;
+    return window.exists ? window.frame : CGRectZero;
+}
+
+- (void)assertRoundFourWorkbench:(XCUIApplication *)app inspector:(BOOL)inspector {
+    [self waitForRoundFour:^BOOL {
+        XCUIElement *workbench = [self roundTwoElement:@"codexpad.workbench" inApp:app];
+        XCUIElement *header = app.staticTexts[@"codexpad.conversation-title"];
+        XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
+        if (!workbench.exists) return NO;
+        CGRect window = [self roundFourWindowFrame:app];
+        CGRect panel = workbench.frame;
+        if (panel.size.height <= 0 || window.size.width <= 0
+            || [self visibleButton:@"codexpad.close-workbench" inApp:app] == nil) return NO;
+        if (inspector) {
+            return window.size.width >= 1280 && panel.size.width >= 300 && panel.size.width <= 400
+                && CGRectGetMinX(panel) > CGRectGetMidX(window)
+                && fabs(CGRectGetMaxX(panel) - CGRectGetMaxX(window)) <= 16
+                && header.isHittable && composer.isHittable
+                && CGRectGetMaxX(header.frame) <= CGRectGetMinX(panel)
+                && CGRectGetMaxX(composer.frame) <= CGRectGetMinX(panel) + 2;
+        }
+        // Native iPad portrait sheet: wider than the inspector, centred over
+        // the window, with the underlying conversation blocked by the modal.
+        return window.size.width < 1280 && panel.size.width > 400
+            && CGRectGetMinX(panel) > CGRectGetMinX(window)
+            && CGRectGetMaxX(panel) < CGRectGetMaxX(window)
+            && fabs(CGRectGetMidX(panel) - CGRectGetMidX(window)) <= 16
+            && !header.isHittable;
+    } message:inspector ? @"The open workbench must be the trailing 300...400-point inspector beside a reachable conversation"
+        : @"The still-open workbench must migrate to a native modal sheet in portrait"];
+}
+
+- (void)attachRoundFourState:(XCUIApplication *)app name:(NSString *)name {
+    [self attachScreen:name];
+    XCUIElement *workspace = [self roundTwoElement:@"codexpad.workspace" inApp:app];
+    XCUIElement *workbench = [self roundTwoElement:@"codexpad.workbench" inApp:app];
+    XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
+    XCUIElement *header = app.staticTexts[@"codexpad.conversation-title"];
+    XCUIElement *mainWindow = app.windows.firstMatch;
+    XCUIElement *files = [self visibleButton:@"Files" inApp:app];
+    CGRect workspaceFrame = workspace.exists ? workspace.frame : CGRectZero;
+    CGRect nativeWindowFrame = mainWindow.exists ? mainWindow.frame : CGRectZero;
+    CGRect workbenchFrame = workbench.exists ? workbench.frame : CGRectZero;
+    CGRect composerFrame = composer.exists ? composer.frame : CGRectZero;
+    CGRect headerFrame = header.exists ? header.frame : CGRectZero;
+    NSString *details = [NSString stringWithFormat:
+        @"orientation=%ld; app state=%lu\nmeasurement_source=%@; measured_window=%@\nnative app window: exists=%d frame=%@\nworkspace: exists=%d frame=%@\nworkbench: exists=%d hittable=%d frame=%@\ncomposer: exists=%d hittable=%d frame=%@ value=%@\nheader: exists=%d hittable=%d frame=%@\nFiles selected=%d; Latest exists=%d hittable=%d\n%@",
+        (long)XCUIDevice.sharedDevice.orientation, (unsigned long)app.state,
+        workspace.exists ? @"hosting-workspace" : @"native-app-window (workspace hidden from AX)",
+        NSStringFromCGRect([self roundFourWindowFrame:app]), mainWindow.exists, NSStringFromCGRect(nativeWindowFrame),
+        workspace.exists, NSStringFromCGRect(workspaceFrame),
+        workbench.exists, workbench.isHittable, NSStringFromCGRect(workbenchFrame),
+        composer.exists, composer.isHittable, NSStringFromCGRect(composerFrame), composer.exists ? composer.value : nil,
+        header.exists, header.isHittable, NSStringFromCGRect(headerFrame),
+        files != nil && files.isSelected, app.buttons[@"codexpad.latest-message"].exists,
+        app.buttons[@"codexpad.latest-message"].isHittable, app.debugDescription];
+    XCTAttachment *evidence = [XCTAttachment attachmentWithString:details];
+    evidence.name = [name stringByAppendingString:@"-frames-and-accessibility-tree"];
+    evidence.lifetime = XCTAttachmentLifetimeKeepAlways;
+    [self addAttachment:evidence];
 }
 
 - (void)testRoundThreeLight {

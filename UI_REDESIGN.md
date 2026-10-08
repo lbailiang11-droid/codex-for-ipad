@@ -226,3 +226,17 @@ report and package metadata are in the task's separate
 general kernel matrix was run. No physical iPad was operated. Live login,
 real RPC/file permissions, hardware keyboard, dynamic Stage Manager and
 long connection stability remain unverified.
+
+## Window acceptance after the three implementation rounds
+
+Date: 2026-10-08. Branch: `codex/ui-round4`; baseline: `c600b2d`.
+The brief has no predefined fourth implementation round. This stage checks
+the remaining large-window inspector/sheet transitions, composer draft/focus
+and reading position using one targeted native Demo flow. Earlier 11-inch
+runs never crossed the 1280pt inspector threshold. Production UI and runtime
+remain unchanged unless new evidence establishes a defect. The existing
+build 805 IPA can be reused while App/project sources match `4f47705`.
+
+The test plan and evidence limits are in `tests/codexpad_ui_round4/README.md`.
+Actual results will be recorded after CI, separately from physical-device,
+real Stage Manager, hardware-keyboard and long-connection validation.
