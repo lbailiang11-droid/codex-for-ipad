@@ -370,7 +370,14 @@
     [search typeText:@"thread/list"];
     XCUIElement *feature = [self roundTwoElement:@"codexpad.feature.thread/list" inApp:app];
     XCTAssertTrue([feature waitForExistenceWithTimeout:5]);
-    XCTAssertTrue(feature.isHittable);
+    // The larger system font can put a matching row below the visible List.
+    // Scroll the real catalog before requiring the actual button to be hit.
+    XCUIElement *catalog = [self roundTwoElement:@"codexpad.feature-catalog" inApp:app];
+    XCUIElement *catalogScroller = catalog.collectionViews.firstMatch;
+    if (!catalogScroller.exists) catalogScroller = catalog.scrollViews.firstMatch;
+    if (!catalogScroller.exists) catalogScroller = catalog.tables.firstMatch;
+    XCTAssertTrue(catalogScroller.exists);
+    [self revealRoundThreeElement:feature scroller:catalogScroller forward:YES inApp:app];
     XCTAssertFalse([self roundTwoElement:@"codexpad.feature.fs/readFile" inApp:app].exists,
         @"The real search must filter a nonmatching operation");
     [self attachScreen:[name stringByAppendingString:@"-feature-search"]];
