@@ -44,6 +44,7 @@
 - (void)assertRoundFourWindow:(XCUIApplication *)app landscape:(BOOL)landscape;
 - (void)assertRoundFourWorkbench:(XCUIApplication *)app inspector:(BOOL)inspector;
 - (void)attachRoundFourState:(XCUIApplication *)app name:(NSString *)name;
+- (void)exerciseRoundFourReadingAndToolbarHide:(NSString *)draft;
 @end
 
 @implementation UITests
@@ -328,17 +329,62 @@
     [done tap];
     XCTAssertTrue([[self roundTwoElement:@"codexpad.workbench" inApp:app] waitForNonExistenceWithTimeout:5]);
     XCTAssertEqualObjects(composer.value, draft);
-    [app typeText:@" after Done"];
-    XCTAssertEqualObjects(composer.value, [draft stringByAppendingString:@" after Done"],
-        @"App-level typing without tapping the composer must prove that Done restores its input focus");
+    NSString *doneSuffix = @" after Done";
+    [app typeText:doneSuffix];
+    [self waitForRoundFour:^BOOL {
+        return [composer.value isEqual:[draft stringByAppendingString:doneSuffix]];
+    } message:@"App-level typing without tapping the composer must complete in the original draft after Done"];
     [self dismissRoundThreeKeyboard:app];
     [self attachRoundFourState:app name:@"round4-13-inch-done-draft-and-focus"];
     [app terminate];
     self.roundFourApp = nil;
+    [self exerciseRoundFourReadingAndToolbarHide:draft];
+}
 
+- (void)testRoundFourRemaining {
+    // The first run already captured inspector -> sheet -> inspector and tab
+    // retention. Re-establish only the real wide inspector needed for Done.
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-desktop-mode", @"--codexpad-demo-reading"]];
+    self.roundFourApp = app;
+    [self assertRoundFourWindow:app landscape:YES];
+    XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
+    NSString *draft = @"Round four window draft\n第二行保留\nThird line";
+    [composer tap];
+    [composer typeText:draft];
+    [self waitForRoundFour:^BOOL {
+        return [composer.value isEqual:draft];
+    } message:@"The real multiline draft must finish entering before the remaining acceptance flow"];
+    [self dismissRoundThreeKeyboard:app];
+    [self openRoundTwoWorkbench:app];
+    [self assertRoundFourWorkbench:app inspector:YES];
+    XCUIElement *files = [self visibleButton:@"Files" inApp:app];
+    XCTAssertNotNil(files);
+    [files tap];
+    [self waitForRoundFour:^BOOL {
+        XCUIElement *tab = [self visibleButton:@"Files" inApp:app];
+        return tab != nil && tab.isSelected
+            && [self visibleButton:@"codexpad.files-refresh" inApp:app] != nil;
+    } message:@"The remaining Done check must interact with the real Files inspector"];
+    [[self visibleButton:@"codexpad.close-workbench" inApp:app] tap];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.workbench" inApp:app] waitForNonExistenceWithTimeout:5]);
+    XCTAssertEqualObjects(composer.value, draft);
+    NSString *doneSuffix = @" after Done";
+    [app typeText:doneSuffix];
+    [self waitForRoundFour:^BOOL {
+        return [composer.value isEqual:[draft stringByAppendingString:doneSuffix]];
+    } message:@"Done must preserve the draft and restore input without a composer tap; wait for the actual full value"];
+    [self dismissRoundThreeKeyboard:app];
+    [self attachRoundFourState:app name:@"round4-13-inch-done-draft-and-focus"];
+    [app terminate];
+    self.roundFourApp = nil;
+    [self exerciseRoundFourReadingAndToolbarHide:draft];
+}
+
+- (void)exerciseRoundFourReadingAndToolbarHide:(NSString *)draft {
     // Expand the existing completed output through its real disclosure control
     // to make a long conversation. No sent prompt, RPC or invented reply.
-    app = [self launchDemo:@[@"--codexpad-desktop-mode"]];
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-desktop-mode"]];
     self.roundFourApp = app;
     [self assertRoundFourWindow:app landscape:YES];
     XCUIElement *timeline = app.scrollViews.firstMatch;
@@ -394,14 +440,16 @@
 
     // Keep this separate close path last so its focus result cannot obscure
     // the already-captured window and reading-position acceptance evidence.
-    composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
+    XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
     [composer tap];
     [composer typeText:draft];
-    XCTAssertEqualObjects(composer.value, draft);
+    [self waitForRoundFour:^BOOL {
+        return [composer.value isEqual:draft];
+    } message:@"The actual draft must finish entering before the toolbar Hide focus check"];
     [self dismissRoundThreeKeyboard:app];
     [self openRoundTwoWorkbench:app];
     [self assertRoundFourWorkbench:app inspector:YES];
-    files = [self visibleButton:@"Files" inApp:app];
+    XCUIElement *files = [self visibleButton:@"Files" inApp:app];
     XCTAssertNotNil(files);
     [files tap];
     [self waitForRoundFour:^BOOL {
@@ -414,9 +462,11 @@
     XCTAssertEqualObjects(hide.value, @"Shown");
     [hide tap];
     XCTAssertTrue([[self roundTwoElement:@"codexpad.workbench" inApp:app] waitForNonExistenceWithTimeout:5]);
-    [app typeText:@" after toolbar Hide"];
-    XCTAssertEqualObjects(composer.value, [draft stringByAppendingString:@" after toolbar Hide"],
-        @"App-level typing must also prove input focus and draft retention after toolbar Hide");
+    NSString *hideSuffix = @" after toolbar Hide";
+    [app typeText:hideSuffix];
+    [self waitForRoundFour:^BOOL {
+        return [composer.value isEqual:[draft stringByAppendingString:hideSuffix]];
+    } message:@"App-level typing must complete in the preserved original draft after toolbar Hide"];
     [self attachRoundFourState:app name:@"round4-13-inch-toolbar-hide-draft-and-focus"];
     [app terminate];
     self.roundFourApp = nil;

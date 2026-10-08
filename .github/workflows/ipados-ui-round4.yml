@@ -2,6 +2,14 @@ name: CodexPad UI Round 4 window acceptance
 
 on:
   workflow_dispatch:
+    inputs:
+      profile:
+        description: Run the window flow or only the remaining close/reading checks
+        type: choice
+        default: wide-light
+        options:
+          - wide-light
+          - remaining
   push:
     branches: [codex/ui-round4]
     paths:
@@ -21,10 +29,10 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 45
     env:
-      PROFILE: wide-light
+      PROFILE: ${{ inputs.profile || 'wide-light' }}
       APPEARANCE: light
       CONTENT_SIZE: large
-      TEST_METHOD: testRoundFourWindowTransitions
+      TEST_METHOD: ${{ inputs.profile == 'remaining' && 'testRoundFourRemaining' || 'testRoundFourWindowTransitions' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,7 +78,9 @@ jobs:
                           narrow_container_simulated=False,
                           demo_fixtures=['--codexpad-demo --codexpad-desktop-mode --codexpad-demo-reading',
                                          '--codexpad-demo --codexpad-desktop-mode'],
-                          scope='actual landscape/portrait workspace widths, inspector/sheet transitions, draft and reading position',
+                          scope=('remaining Done/Hide draft/focus and real reading-position rotation'
+                                 if os.environ['PROFILE'] == 'remaining'
+                                 else 'actual landscape/portrait widths, inspector/sheet transitions, draft and reading position'),
                           state_is_preboot_selection=True)
           Path('artifacts/validation-context.json').write_text(json.dumps(selected, indent=2))
           print(selected['udid'])
@@ -145,7 +155,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: CodexPad-UI-round4-wide-light
+          name: CodexPad-UI-round4-${{ env.PROFILE }}
           path: artifacts
           if-no-files-found: error
           retention-days: 14

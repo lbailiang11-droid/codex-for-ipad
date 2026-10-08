@@ -40,4 +40,23 @@ Physical 11-inch iPad, hardware keyboard, real Stage Manager/Split View resizing
 live login/provider/file/approval operations and long connection stability are
 separate from this simulator acceptance.
 
-Execution and original screenshot results will be appended after the actual run.
+## First execution and targeted continuation
+
+The first run [37763110536](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37763110536)
+at `de6616d` remains failed: 1 test, 1 failure in 154.304 seconds. Actual
+1376pt landscape / 1032pt portrait and Files inspector-to-sheet-to-inspector
+assertions passed. Four prefix screenshots and one failure screenshot are
+preserved with their original frames and source identity.
+
+The immediate post-Done AX value assertion read `after Do`. The later failure
+attachment already records the complete actual `after Done` in the same
+composer, without another input operation. This establishes an early read;
+it does not identify which UIKit/binding/AX update layer was delayed.
+The driver now waits for the real complete value after input, without
+retyping, replacing the binding or editing production code.
+
+Manual `remaining` selects `testRoundFourRemaining`: re-establish the wide
+Files inspector and verify Done input, then execute the shared reading and
+toolbar-Hide checks. It does not repeat the passed workbench rotations.
+The full flow remains available as `wide-light`; it is not relabeled passed.
+Continuation results will be appended after execution.
