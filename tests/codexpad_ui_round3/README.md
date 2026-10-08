@@ -14,9 +14,9 @@ selection JSON does not describe the eventual execution state.
 
 The first push touching the round-3 workflow, CodexPad UI source, or native
 UITests on `codex/ui-round3` runs one three-job matrix. Manual `profile` inputs
-are `all`, `light`, `dark`, `narrow`, and `dark-narrow`; use a single failed profile for any
+are `all`, `light`, `light-remaining`, `dark`, `narrow`, and `dark-narrow`; use a single failed profile for any
 necessary retry instead of repeating passed jobs.
-`dark-narrow` runs those two jobs together after the full light flow passes,
+`dark-narrow` runs those two jobs together after the remaining light flow passes,
 without concurrency cancellation between separate workflow runs on this branch.
 
 - `light` / `testRoundThreeLight`: Settings touch-mode and show-all bindings;
@@ -30,6 +30,13 @@ without concurrency cancellation between separate workflow runs on this branch.
 - `dark` / `testRoundThreeDark`: the same auxiliary forms, binding and focus
   regressions, pending question/approval flow, and empty Changes. It does not
   relaunch all four state variants.
+- `light-remaining` / `testRoundThreeLightRemaining`: targeted continuation
+  after the recorded light prefix passed at `8751898`. It checks the actual
+  no-match title and Clear search button, search clearing, Desktop focus,
+  question/approval, empty workbench and four state launches. It does not
+  repeat the accepted Settings/search/detail prefix. The full dark profile
+  still requires the final retained JSON draft equality. This continuation
+  is reported alongside the partial light run, not as a passed full light job.
 - `narrow` / `testRoundThreeNarrowAccessibility`: an actual measured
   600-point hosting container with accessibility-extra-extra-large Dynamic
   Type, Settings/Feature Center navigation, pending question/approval, empty

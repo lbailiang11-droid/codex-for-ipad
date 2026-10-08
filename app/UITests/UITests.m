@@ -31,6 +31,9 @@
 - (void)revealRoundThreeElement:(XCUIElement *)element scroller:(XCUIElement *)scroller forward:(BOOL)forward inApp:(XCUIApplication *)app;
 - (void)exerciseRoundThreeEmptyWorkbench:(XCUIApplication *)app name:(NSString *)name;
 - (void)setRoundThreeSwitch:(XCUIElement *)control value:(NSString *)value inApp:(XCUIApplication *)app;
+- (void)exerciseRoundThreeNoResults:(XCUIApplication *)app name:(NSString *)name;
+- (void)exerciseRoundThreeFocus:(XCUIApplication *)app name:(NSString *)name;
+- (void)exerciseRoundThreeStateVariants;
 @end
 
 @implementation UITests
@@ -251,6 +254,30 @@
     [self exerciseRoundThreePendingRequests:app name:@"round3-11-inch-light"];
     [self exerciseRoundThreeEmptyWorkbench:app name:@"round3-11-inch-light"];
     [app terminate];
+    [self exerciseRoundThreeStateVariants];
+}
+
+- (void)testRoundThreeLightRemaining {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary", @"--codexpad-show-all-features"]];
+    XCUIElement *banner = [self roundTwoElement:@"codexpad.error-banner" inApp:app];
+    XCTAssertTrue([banner waitForExistenceWithTimeout:5]);
+    [self tapRoundTwoButton:@"codexpad.error-dismiss" inApp:app];
+    XCTAssertTrue([banner waitForNonExistenceWithTimeout:5]);
+    [self tapRoundTwoButton:@"codexpad.features" inApp:app];
+    XCUIElement *center = [self roundTwoElement:@"codexpad.feature-center" inApp:app];
+    XCTAssertTrue([center waitForExistenceWithTimeout:5]);
+    [self exerciseRoundThreeNoResults:app name:@"round3-11-inch-light-remaining"];
+    [self tapRoundThreeDone:app];
+    XCTAssertTrue([center waitForNonExistenceWithTimeout:5]);
+    [self exerciseRoundThreeFocus:app name:@"round3-11-inch-light-remaining"];
+    [self exerciseRoundThreePendingRequests:app name:@"round3-11-inch-light-remaining"];
+    [self exerciseRoundThreeEmptyWorkbench:app name:@"round3-11-inch-light-remaining"];
+    [app terminate];
+    [self exerciseRoundThreeStateVariants];
+}
+
+- (void)exerciseRoundThreeStateVariants {
 
     // State fixtures only select real EnginePhase/empty-session values. The
     // retry/auth buttons are deliberately not invoked: they remain live RPCs.
@@ -261,7 +288,7 @@
         @"welcome": @"codexpad.welcome"
     };
     for (NSString *state in @[@"starting", @"connecting", @"offline", @"welcome"]) {
-        app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary",
+        XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary",
             [@"--codexpad-demo-state-" stringByAppendingString:state]]];
         XCTAssertTrue([[self roundTwoElement:states[state] inApp:app] waitForExistenceWithTimeout:5]);
         XCTAssertFalse([self roundTwoElement:@"codexpad.composer" inApp:app].exists);
@@ -366,21 +393,7 @@
         [back tap];
         XCTAssertTrue([app.buttons[@"codexpad.feature-browser-back"] waitForExistenceWithTimeout:5]);
     }
-    search = app.textFields[@"codexpad.feature-search"];
-    XCTAssertTrue(search.isHittable);
-    [self tapRoundTwoButton:@"codexpad.feature-search-clear" inApp:app];
-    [search tap];
-    [search typeText:@"__codexpad_no_match__"];
-    XCUIElement *noResults = [self roundTwoElement:@"codexpad.feature-no-results" inApp:app];
-    XCTAssertTrue([noResults waitForExistenceWithTimeout:5]);
-    XCUIElement *catalog = [self roundTwoElement:@"codexpad.feature-catalog" inApp:app];
-    XCUIElement *catalogScroller = catalog.collectionViews.firstMatch;
-    if (!catalogScroller.exists) catalogScroller = catalog.scrollViews.firstMatch;
-    if (!catalogScroller.exists) catalogScroller = catalog.tables.firstMatch;
-    XCTAssertTrue(catalogScroller.exists);
-    [self revealRoundThreeElement:noResults scroller:catalogScroller forward:YES inApp:app];
-    XCTAssertFalse(feature.exists);
-    [self attachScreen:[name stringByAppendingString:@"-feature-no-results"]];
+    [self exerciseRoundThreeNoResults:app name:name];
     if (opensCompactCatalog) {
         [self tapRoundTwoButton:@"codexpad.feature-browser-back" inApp:app];
         XCTAssertTrue([app.buttons[@"codexpad.feature-browser-back"] waitForNonExistenceWithTimeout:5]);
@@ -392,7 +405,13 @@
     XCTAssertTrue([app.buttons[@"codexpad.input-mode"].label containsString:@"Touch mode"],
         @"Showing the complete catalog must not enable Desktop input behavior");
 
-    if (!focus) return;
+    if (focus) [self exerciseRoundThreeFocus:app name:name];
+}
+
+- (void)exerciseRoundThreeFocus:(XCUIApplication *)app name:(NSString *)name {
+    XCUIElement *desktop = app.switches[@"codexpad.desktop-mode"];
+    XCUIElement *showAll = app.switches[@"codexpad.touch-show-all"];
+    XCUIElement *center = [self roundTwoElement:@"codexpad.feature-center" inApp:app];
     [self openRoundThreeSettings:app];
     [self setRoundThreeSwitch:desktop value:@"1" inApp:app];
     XCTAssertEqualObjects(desktop.value, @"1");
@@ -435,6 +454,50 @@
     XCTAssertFalse(app.buttons[@"codexpad.features"].exists);
     XCTAssertTrue([app.buttons[@"codexpad.input-mode"].label containsString:@"Touch mode"]);
     XCTAssertEqualObjects(composer.value, @"Settings focus retained after features after settings features");
+}
+
+- (void)exerciseRoundThreeNoResults:(XCUIApplication *)app name:(NSString *)name {
+    XCUIElement *search = app.textFields[@"codexpad.feature-search"];
+    XCTAssertTrue([search waitForExistenceWithTimeout:5]);
+    XCTAssertTrue(search.isHittable);
+    if (app.buttons[@"codexpad.feature-search-clear"].exists) {
+        [self tapRoundTwoButton:@"codexpad.feature-search-clear" inApp:app];
+    }
+    NSPredicate *emptySearch = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        if (!search.exists) return NO;
+        id value = search.value;
+        return value == nil || ([value isKindOfClass:NSString.class] &&
+            ([(NSString *)value length] == 0 || [value isEqual:search.placeholderValue]));
+    }];
+    XCTNSPredicateExpectation *initiallyEmpty = [[XCTNSPredicateExpectation alloc] initWithPredicate:emptySearch object:search];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[initiallyEmpty] timeout:5], XCTWaiterResultCompleted);
+    [search tap];
+    [search typeText:@"__codexpad_no_match__"];
+
+    // ContentUnavailableView gives its ID to Image, text and Button children.
+    // Require the observed state text and real action, not a decorative image.
+    NSPredicate *titleMatch = [NSPredicate predicateWithFormat:@"identifier == %@ AND label == %@",
+        @"codexpad.feature-no-results", @"No matching features"];
+    XCUIElement *title = [app.staticTexts matchingPredicate:titleMatch].firstMatch;
+    XCTAssertTrue([title waitForExistenceWithTimeout:5]);
+    NSPredicate *clearMatch = [NSPredicate predicateWithFormat:@"identifier == %@ AND label == %@",
+        @"codexpad.feature-no-results", @"Clear search"];
+    XCUIElement *clear = [app.buttons matchingPredicate:clearMatch].firstMatch;
+    XCUIElement *catalog = [self roundTwoElement:@"codexpad.feature-catalog" inApp:app];
+    XCUIElement *scroller = catalog.collectionViews.firstMatch;
+    if (!scroller.exists) scroller = catalog.scrollViews.firstMatch;
+    if (!scroller.exists) scroller = catalog.tables.firstMatch;
+    XCTAssertTrue(scroller.exists);
+    [self revealRoundThreeElement:clear scroller:scroller forward:YES inApp:app];
+    XCTAssertTrue(clear.isEnabled);
+    XCTAssertTrue(CGRectIntersectsRect(title.frame, catalog.frame), @"The actual state title must be in the visible catalog");
+    XCTAssertFalse([self roundTwoElement:@"codexpad.feature.thread/list" inApp:app].exists);
+    [self attachScreen:[name stringByAppendingString:@"-feature-no-results"]];
+    [clear tap];
+    XCTNSPredicateExpectation *cleared = [[XCTNSPredicateExpectation alloc] initWithPredicate:emptySearch object:search];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[cleared] timeout:5], XCTWaiterResultCompleted,
+        @"The real empty-state action must clear the bound search field");
+    XCTAssertTrue([title waitForNonExistenceWithTimeout:5]);
 }
 
 - (void)exerciseRoundThreePendingRequests:(XCUIApplication *)app name:(NSString *)name {
