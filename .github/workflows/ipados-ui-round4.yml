@@ -10,6 +10,7 @@ on:
         options:
           - wide-light
           - remaining
+          - reading-only
   push:
     branches: [codex/ui-round4]
     paths:
@@ -32,7 +33,7 @@ jobs:
       PROFILE: ${{ inputs.profile || 'wide-light' }}
       APPEARANCE: light
       CONTENT_SIZE: large
-      TEST_METHOD: ${{ inputs.profile == 'remaining' && 'testRoundFourRemaining' || 'testRoundFourWindowTransitions' }}
+      TEST_METHOD: ${{ inputs.profile == 'reading-only' && 'testRoundFourReadingRemaining' || inputs.profile == 'remaining' && 'testRoundFourRemaining' || 'testRoundFourWindowTransitions' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,9 +77,13 @@ jobs:
           selected.update(profile=os.environ['PROFILE'], appearance=os.environ['APPEARANCE'],
                           content_size=os.environ['CONTENT_SIZE'], demo_mode=True,
                           narrow_container_simulated=False,
-                          demo_fixtures=['--codexpad-demo --codexpad-desktop-mode --codexpad-demo-reading',
-                                         '--codexpad-demo --codexpad-desktop-mode'],
-                          scope=('remaining Done/Hide draft/focus and real reading-position rotation'
+                          demo_fixtures=(['--codexpad-demo --codexpad-desktop-mode']
+                                         if os.environ['PROFILE'] == 'reading-only' else
+                                         ['--codexpad-demo --codexpad-desktop-mode --codexpad-demo-reading',
+                                          '--codexpad-demo --codexpad-desktop-mode']),
+                          scope=('only real reading-position rotation, Latest and toolbar-Hide focus'
+                                 if os.environ['PROFILE'] == 'reading-only' else
+                                 'remaining Done/Hide draft/focus and real reading-position rotation'
                                  if os.environ['PROFILE'] == 'remaining'
                                  else 'actual landscape/portrait widths, inspector/sheet transitions, draft and reading position'),
                           state_is_preboot_selection=True)

@@ -381,6 +381,11 @@
     [self exerciseRoundFourReadingAndToolbarHide:draft];
 }
 
+- (void)testRoundFourReadingRemaining {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    [self exerciseRoundFourReadingAndToolbarHide:@"Round four window draft\n第二行保留\nThird line"];
+}
+
 - (void)exerciseRoundFourReadingAndToolbarHide:(NSString *)draft {
     // Expand the existing completed output through its real disclosure control
     // to make a long conversation. No sent prompt, RPC or invented reply.
@@ -396,18 +401,24 @@
     XCTAssertTrue(output.isHittable);
     [output tap];
     XCUIElement *lastParagraph = [app.staticTexts matchingPredicate:
-        [NSPredicate predicateWithFormat:@"label BEGINSWITH %@", @"正文应自然换行，长代码应横向滚动。"]].firstMatch;
-    [self waitForRoundFour:^BOOL {
-        return [self visibleButton:@"codexpad.latest-message" inApp:app] != nil || lastParagraph.isHittable;
-    } message:@"The expanded conversation must expose Latest or its actual final paragraph"];
-    XCUIElement *latest = [self visibleButton:@"codexpad.latest-message" inApp:app];
-    if (latest != nil) [latest tap];
-    [self waitForRoundFour:^BOOL {
-        return lastParagraph.isHittable && !app.buttons[@"codexpad.latest-message"].exists;
-    } message:@"Establish the actual conversation bottom before scrolling to earlier content"];
+        // The actual native AX label preserves a leading newline after the
+        // code fence. Match this unique prose without discarding that content.
+        [NSPredicate predicateWithFormat:@"label CONTAINS %@", @"正文应自然换行，长代码应横向滚动。"]].firstMatch;
+    BOOL (^atBottom)(void) = ^BOOL {
+        if (!lastParagraph.exists || !lastParagraph.isHittable) return NO;
+        CGRect visible = CGRectIntersection(lastParagraph.frame, timeline.frame);
+        return CGRectGetHeight(visible) >= CGRectGetHeight(lastParagraph.frame) - 2
+            && !app.buttons[@"codexpad.latest-message"].exists;
+    };
+    // Expanding a disclosure changes local card height, not model timeline
+    // data. It does not promise an automatic bottom jump or a Latest button.
+    for (NSUInteger attempt = 0; attempt < 8 && !atBottom(); attempt++) {
+        [timeline swipeUpWithVelocity:XCUIGestureVelocitySlow];
+    }
+    [self waitForRoundFour:atBottom message:@"Actual downward scrolling must establish the conversation bottom before reading earlier content"];
 
     XCUIElement *earlierParagraph = [app.staticTexts matchingPredicate:
-        [NSPredicate predicateWithFormat:@"label BEGINSWITH %@", @"整理这个工作台的阅读层次。"]].firstMatch;
+        [NSPredicate predicateWithFormat:@"label CONTAINS %@", @"整理这个工作台的阅读层次。"]].firstMatch;
     for (NSUInteger attempt = 0; attempt < 8 && !earlierParagraph.isHittable; attempt++) {
         [timeline swipeDownWithVelocity:XCUIGestureVelocitySlow];
     }
@@ -430,12 +441,7 @@
     } message:@"Landscape rotation must keep Latest available without forcing the reader to the bottom"];
     [self attachRoundFourState:app name:@"round4-13-inch-landscape-scrolled-up-latest"];
     [[self visibleButton:@"codexpad.latest-message" inApp:app] tap];
-    [self waitForRoundFour:^BOOL {
-        if (!lastParagraph.exists || !lastParagraph.isHittable) return NO;
-        CGRect visible = CGRectIntersection(lastParagraph.frame, timeline.frame);
-        return CGRectGetHeight(visible) >= CGRectGetHeight(lastParagraph.frame) - 2
-            && !app.buttons[@"codexpad.latest-message"].exists;
-    } message:@"Tapping Latest must reveal the actual final paragraph in the conversation viewport"];
+    [self waitForRoundFour:atBottom message:@"Tapping Latest must reveal the actual final paragraph in the conversation viewport"];
     [self attachRoundFourState:app name:@"round4-13-inch-latest-returned-to-bottom"];
 
     // Keep this separate close path last so its focus result cannot obscure

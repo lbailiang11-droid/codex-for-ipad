@@ -59,4 +59,18 @@ Manual `remaining` selects `testRoundFourRemaining`: re-establish the wide
 Files inspector and verify Done input, then execute the shared reading and
 toolbar-Hide checks. It does not repeat the passed workbench rotations.
 The full flow remains available as `wide-light`; it is not relabeled passed.
-Continuation results will be appended after execution.
+Continuation [37765707117](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37765707117)
+at `1646619` passed the real post-Done complete-value check; its screenshot
+shows the full three-line draft. The complete job remains failed: 200.367
+seconds, 1 failure before the reading/Hide checks completed.
+
+The driver incorrectly expected the expanded output to expose Latest or the
+final paragraph without scrolling. The real AX tree puts the final paragraph
+at y=1278 below the timeline ending at y=839.5; its label also starts with a
+newline, so the old BEGINSWITH matcher cannot select it. The driver now matches
+the unique actual text with CONTAINS, scrolls the real timeline to establish
+the bottom, then performs the unchanged upward/rotation/Latest checks.
+
+Manual `reading-only` runs `testRoundFourReadingRemaining` and does not repeat
+the passed workbench transition or Done checks. All failed conclusions remain
+recorded. Reading/Hide results will be appended after actual execution.
