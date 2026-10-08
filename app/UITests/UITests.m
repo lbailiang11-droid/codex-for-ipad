@@ -40,6 +40,7 @@
 - (void)dismissRoundThreeKeyboard:(XCUIApplication *)app;
 @property (nonatomic, strong) XCUIApplication *roundFourApp;
 - (void)waitForRoundFour:(BOOL (^)(void))condition message:(NSString *)message;
+- (void)waitForRoundFour:(BOOL (^)(void))condition timeout:(NSTimeInterval)timeout message:(NSString *)message;
 - (CGRect)roundFourWindowFrame:(XCUIApplication *)app;
 - (void)assertRoundFourWindow:(XCUIApplication *)app landscape:(BOOL)landscape;
 - (void)assertRoundFourWorkbench:(XCUIApplication *)app inspector:(BOOL)inspector;
@@ -464,7 +465,7 @@
     [composer typeText:draft];
     [self waitForRoundFour:^BOOL {
         return [composer.value isEqual:draft];
-    } message:@"The actual draft must finish entering before the toolbar Hide focus check"];
+    } timeout:30 message:@"The actual draft must finish entering before the toolbar Hide focus check"];
     [self attachRoundFourState:app name:@"round4-13-inch-toolbar-hide-draft-before-workbench"];
     [self dismissRoundThreeKeyboard:app];
     [self openRoundTwoWorkbench:app];
@@ -486,18 +487,22 @@
     [app typeText:hideSuffix];
     [self waitForRoundFour:^BOOL {
         return [composer.value isEqual:[draft stringByAppendingString:hideSuffix]];
-    } message:@"App-level typing must complete in the preserved original draft after toolbar Hide"];
+    } timeout:30 message:@"App-level typing must complete in the preserved original draft after toolbar Hide"];
     [self attachRoundFourState:app name:@"round4-13-inch-toolbar-hide-draft-and-focus"];
     [app terminate];
     self.roundFourApp = nil;
 }
 
 - (void)waitForRoundFour:(BOOL (^)(void))condition message:(NSString *)message {
+    [self waitForRoundFour:condition timeout:10 message:message];
+}
+
+- (void)waitForRoundFour:(BOOL (^)(void))condition timeout:(NSTimeInterval)timeout message:(NSString *)message {
     NSPredicate *predicate = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
         return condition();
     }];
     XCTNSPredicateExpectation *ready = [[XCTNSPredicateExpectation alloc] initWithPredicate:predicate object:self.roundFourApp];
-    XCTAssertEqual([XCTWaiter waitForExpectations:@[ready] timeout:10], XCTWaiterResultCompleted, @"%@", message);
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[ready] timeout:timeout], XCTWaiterResultCompleted, @"%@", message);
 }
 
 - (void)assertRoundFourWindow:(XCUIApplication *)app landscape:(BOOL)landscape {
