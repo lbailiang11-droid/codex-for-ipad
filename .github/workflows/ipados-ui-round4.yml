@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       profile:
-        description: Run the window flow or only the remaining close/reading checks
+        description: Run the window flow or only remaining close/reading/input checks
         type: choice
         default: wide-light
         options:
           - wide-light
           - remaining
           - reading-only
+          - toolbar-hide-only
   push:
     branches: [codex/ui-round4]
     paths:
@@ -33,7 +34,7 @@ jobs:
       PROFILE: ${{ inputs.profile || 'wide-light' }}
       APPEARANCE: light
       CONTENT_SIZE: large
-      TEST_METHOD: ${{ inputs.profile == 'reading-only' && 'testRoundFourReadingRemaining' || inputs.profile == 'remaining' && 'testRoundFourRemaining' || 'testRoundFourWindowTransitions' }}
+      TEST_METHOD: ${{ inputs.profile == 'toolbar-hide-only' && 'testRoundFourToolbarHideRemaining' || inputs.profile == 'reading-only' && 'testRoundFourReadingRemaining' || inputs.profile == 'remaining' && 'testRoundFourRemaining' || 'testRoundFourWindowTransitions' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,13 +76,16 @@ jobs:
           candidates.sort(key=lambda d: (d['runtime'], 'Pro' in d['name']), reverse=True)
           selected = candidates[0]
           selected.update(profile=os.environ['PROFILE'], appearance=os.environ['APPEARANCE'],
+                          test_method=os.environ['TEST_METHOD'],
                           content_size=os.environ['CONTENT_SIZE'], demo_mode=True,
                           narrow_container_simulated=False,
                           demo_fixtures=(['--codexpad-demo --codexpad-desktop-mode']
-                                         if os.environ['PROFILE'] == 'reading-only' else
+                                         if os.environ['PROFILE'] in ('reading-only', 'toolbar-hide-only') else
                                          ['--codexpad-demo --codexpad-desktop-mode --codexpad-demo-reading',
                                           '--codexpad-demo --codexpad-desktop-mode']),
-                          scope=('only real reading-position rotation, Latest and toolbar-Hide focus'
+                          scope=('only multiline composer pixels and toolbar-Hide draft/focus after actual typing'
+                                 if os.environ['PROFILE'] == 'toolbar-hide-only' else
+                                 'only real reading-position rotation, Latest and toolbar-Hide focus'
                                  if os.environ['PROFILE'] == 'reading-only' else
                                  'remaining Done/Hide draft/focus and real reading-position rotation'
                                  if os.environ['PROFILE'] == 'remaining'
@@ -98,7 +102,7 @@ jobs:
           xcrun simctl status_bar "$udid" override --time '9:41' --batteryState charged --batteryLevel 100
           xcrun simctl ui "$udid" content_size "$CONTENT_SIZE"
           xcrun simctl ui "$udid" appearance "$APPEARANCE"
-      - name: Build and exercise native window transitions
+      - name: Build and exercise selected native acceptance flow
         shell: bash
         run: |
           set -euo pipefail

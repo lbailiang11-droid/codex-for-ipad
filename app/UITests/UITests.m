@@ -45,6 +45,7 @@
 - (void)assertRoundFourWorkbench:(XCUIApplication *)app inspector:(BOOL)inspector;
 - (void)attachRoundFourState:(XCUIApplication *)app name:(NSString *)name;
 - (void)exerciseRoundFourReadingAndToolbarHide:(NSString *)draft;
+- (void)exerciseRoundFourToolbarHide:(XCUIApplication *)app draft:(NSString *)draft;
 @end
 
 @implementation UITests
@@ -386,6 +387,14 @@
     [self exerciseRoundFourReadingAndToolbarHide:@"Round four window draft\n第二行保留\nThird line"];
 }
 
+- (void)testRoundFourToolbarHideRemaining {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-desktop-mode"]];
+    self.roundFourApp = app;
+    [self assertRoundFourWindow:app landscape:YES];
+    [self exerciseRoundFourToolbarHide:app draft:@"Round four window draft\n第二行保留\nThird line"];
+}
+
 - (void)exerciseRoundFourReadingAndToolbarHide:(NSString *)draft {
     // Expand the existing completed output through its real disclosure control
     // to make a long conversation. No sent prompt, RPC or invented reply.
@@ -446,12 +455,17 @@
 
     // Keep this separate close path last so its focus result cannot obscure
     // the already-captured window and reading-position acceptance evidence.
+    [self exerciseRoundFourToolbarHide:app draft:draft];
+}
+
+- (void)exerciseRoundFourToolbarHide:(XCUIApplication *)app draft:(NSString *)draft {
     XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
     [composer tap];
     [composer typeText:draft];
     [self waitForRoundFour:^BOOL {
         return [composer.value isEqual:draft];
     } message:@"The actual draft must finish entering before the toolbar Hide focus check"];
+    [self attachRoundFourState:app name:@"round4-13-inch-toolbar-hide-draft-before-workbench"];
     [self dismissRoundThreeKeyboard:app];
     [self openRoundTwoWorkbench:app];
     [self assertRoundFourWorkbench:app inspector:YES];
