@@ -34,6 +34,7 @@
 - (void)exerciseRoundThreeNoResults:(XCUIApplication *)app name:(NSString *)name;
 - (void)exerciseRoundThreeFocus:(XCUIApplication *)app name:(NSString *)name;
 - (void)exerciseRoundThreeStateVariants;
+- (void)dismissRoundThreeKeyboard:(XCUIApplication *)app;
 @end
 
 @implementation UITests
@@ -277,6 +278,17 @@
     [self exerciseRoundThreeStateVariants];
 }
 
+- (void)testRoundThreeLightRequestsRemaining {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary"]];
+    [self tapRoundTwoButton:@"codexpad.error-dismiss" inApp:app];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.error-banner" inApp:app] waitForNonExistenceWithTimeout:5]);
+    [self exerciseRoundThreePendingRequests:app name:@"round3-11-inch-light-requests"];
+    [self exerciseRoundThreeEmptyWorkbench:app name:@"round3-11-inch-light-requests"];
+    [app terminate];
+    [self exerciseRoundThreeStateVariants];
+}
+
 - (void)exerciseRoundThreeStateVariants {
 
     // State fixtures only select real EnginePhase/empty-session values. The
@@ -501,8 +513,20 @@
 }
 
 - (void)exerciseRoundThreePendingRequests:(XCUIApplication *)app name:(NSString *)name {
+    // Focus assertions have completed. Dismiss the real keyboard before
+    // scrolling requests; its prediction row is also an AX ScrollView.
+    [self dismissRoundThreeKeyboard:app];
     XCUIElement *picker = app.buttons[@"codexpad.question.options.reading-mode"];
-    XCUIElement *timeline = app.scrollViews.firstMatch;
+    XCUIElement *timeline = nil;
+    for (NSUInteger index = 0; index < app.scrollViews.count; index++) {
+        XCUIElement *candidate = [app.scrollViews elementBoundByIndex:index];
+        if (candidate.buttons[@"codexpad.question.options.reading-mode"].exists ||
+            candidate.buttons[@"codexpad.approval.decline.approval-aux"].exists) {
+            timeline = candidate;
+            break;
+        }
+    }
+    XCTAssertNotNil(timeline, @"Scroll the real ancestor of the pending request, not a keyboard or model-control scroll view");
     [self revealRoundThreeElement:picker scroller:timeline forward:NO inApp:app];
     XCUIElement *submit = app.buttons[@"codexpad.question.submit.question-aux"];
     XCTAssertFalse(submit.isEnabled, @"An unanswered required question cannot be submitted");
@@ -533,6 +557,24 @@
     [decline tap];
     XCTAssertTrue([[self roundTwoElement:@"codexpad.approval.approval-aux" inApp:app] waitForNonExistenceWithTimeout:5]);
     XCTAssertFalse([self roundTwoElement:@"codexpad.error-banner" inApp:app].exists);
+}
+
+- (void)dismissRoundThreeKeyboard:(XCUIApplication *)app {
+    XCUIElement *keyboard = app.keyboards.firstMatch;
+    if (!keyboard.exists) return;
+    XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
+    id draft = composer.value;
+    NSPredicate *dismissLabel = [NSPredicate predicateWithFormat:
+        @"label MATCHES[c] %@ OR identifier MATCHES[c] %@", @"(Hide|Dismiss) keyboard", @"(Hide|Dismiss) keyboard"];
+    XCUIElementQuery *buttons = [app.buttons matchingPredicate:dismissLabel];
+    BOOL tapped = NO;
+    for (NSUInteger index = 0; index < buttons.count; index++) {
+        XCUIElement *button = [buttons elementBoundByIndex:index];
+        if (button.isHittable) { [button tap]; tapped = YES; break; }
+    }
+    XCTAssertTrue(tapped, @"The native iPad keyboard must expose a reachable dismissal action");
+    XCTAssertTrue([keyboard waitForNonExistenceWithTimeout:5]);
+    XCTAssertEqualObjects(composer.value, draft, @"Dismissing the keyboard must preserve the actual composer draft");
 }
 
 - (void)exerciseRoundThreeEmptyWorkbench:(XCUIApplication *)app name:(NSString *)name {

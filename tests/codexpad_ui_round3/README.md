@@ -14,7 +14,8 @@ selection JSON does not describe the eventual execution state.
 
 The first push touching the round-3 workflow, CodexPad UI source, or native
 UITests on `codex/ui-round3` runs one three-job matrix. Manual `profile` inputs
-are `all`, `light`, `light-remaining`, `dark`, `narrow`, and `dark-narrow`; use a single failed profile for any
+are `all`, `light`, `light-remaining`, `light-requests`, `dark`, `narrow`,
+`dark-narrow`, and `remaining`; use a single failed profile for any
 necessary retry instead of repeating passed jobs.
 `dark-narrow` runs those two jobs together after the remaining light flow passes,
 without concurrency cancellation between separate workflow runs on this branch.
@@ -37,6 +38,13 @@ without concurrency cancellation between separate workflow runs on this branch.
   repeat the accepted Settings/search/detail prefix. The full dark profile
   still requires the final retained JSON draft equality. This continuation
   is reported alongside the partial light run, not as a passed full light job.
+- `light-requests` / `testRoundThreeLightRequestsRemaining`: continues after
+  the actual no-match clearing and three Desktop focus checks passed in
+  run `37743091835`. It covers pending question/approval, empty workbench and
+  state launches. `remaining` runs this continuation plus full dark/narrow
+  in one matrix. Pending-request tests dismiss the actual iPad keyboard,
+  retain the real draft, and find the ScrollView containing request controls;
+  the recorded 49pt firstMatch failure was the keyboard prediction row.
 - `narrow` / `testRoundThreeNarrowAccessibility`: an actual measured
   600-point hosting container with accessibility-extra-extra-large Dynamic
   Type, Settings/Feature Center navigation, pending question/approval, empty
