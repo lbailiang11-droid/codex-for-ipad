@@ -455,20 +455,41 @@
     XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
     XCTAssertTrue(composer.isHittable);
     [composer tap];
-    [composer pressForDuration:1.2];
-    XCUIElementQuery *pasteItems = [[app descendantsMatchingType:XCUIElementTypeAny]
-        matchingPredicate:[NSPredicate predicateWithFormat:@"label == %@", @"Paste"]];
-    XCTAssertTrue([pasteItems.firstMatch waitForExistenceWithTimeout:5], @"Native Paste menu did not appear");
-    XCUIElement *paste = nil;
-    for (NSUInteger index = 0; index < pasteItems.count; index++) {
-        XCUIElement *candidate = [pasteItems elementBoundByIndex:index];
-        if (candidate.isHittable) { paste = candidate; break; }
+    XCTAssertTrue([app.keyboards.firstMatch waitForExistenceWithTimeout:10]);
+    // The first attempt's native snapshot exposed this keyboard assistant
+    // button. Use its real paste action instead of an unreliable remote menu
+    // hit; no clipboard read or expected text is injected by the test runner.
+    XCUIElement *paste = app.buttons[@"assistantPaste:forEvent:"];
+    if (![paste waitForExistenceWithTimeout:5] || !paste.isHittable) {
+        [composer pressForDuration:1.2];
+        XCUIElementQuery *pasteItems = [[app descendantsMatchingType:XCUIElementTypeAny]
+            matchingPredicate:[NSPredicate predicateWithFormat:@"label == %@", @"Paste"]];
+        XCTAssertTrue([pasteItems.firstMatch waitForExistenceWithTimeout:5], @"Native Paste menu did not appear");
+        paste = nil;
+        for (NSUInteger index = 0; index < pasteItems.count; index++) {
+            XCUIElement *candidate = [pasteItems elementBoundByIndex:index];
+            if (candidate.isHittable) { paste = candidate; break; }
+        }
     }
     XCTAssertNotNil(paste);
+    XCTAssertTrue(paste.isEnabled, @"Native Paste must be enabled after Copy");
     [paste tap];
     NSPredicate *rawCode = [NSPredicate predicateWithFormat:@"value == %@", expected];
     XCTNSPredicateExpectation *pasted = [[XCTNSPredicateExpectation alloc] initWithPredicate:rawCode object:composer];
-    XCTAssertEqual([XCTWaiter waitForExpectations:@[pasted] timeout:5], XCTWaiterResultCompleted,
+    XCTWaiterResult result = [XCTWaiter waitForExpectations:@[pasted] timeout:5];
+    if (result != XCTWaiterResultCompleted) {
+        [self attachScreen:@"native-round2-copy-paste-mismatch"];
+        id value = composer.value;
+        NSString *actual = [value isKindOfClass:NSString.class] ? value : [value description];
+        NSString *details = [NSString stringWithFormat:@"Actual composer value: %@\nActual UTF-8 bytes: %lu\nExpected UTF-8 bytes: %lu\n%@",
+            actual, (unsigned long)[actual lengthOfBytesUsingEncoding:NSUTF8StringEncoding],
+            (unsigned long)[expected lengthOfBytesUsingEncoding:NSUTF8StringEncoding], app.debugDescription];
+        XCTAttachment *evidence = [XCTAttachment attachmentWithString:details];
+        evidence.name = @"native-round2-copy-paste-actual-value";
+        evidence.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:evidence];
+    }
+    XCTAssertEqual(result, XCTWaiterResultCompleted,
         @"Copy/Paste must preserve raw code, including whitespace");
 
     // Remove only this known fixture paste, keeping the same App launch and

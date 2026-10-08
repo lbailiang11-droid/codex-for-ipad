@@ -40,7 +40,8 @@ in the file but not selected by this workflow.
 The authoritative fixture root is `/root/workspace/reading-demo`.
 `Sources/Welcome.swift` and the conversation Swift block contain the exact
 UTF-8 text `// 你好 👋\nlet greeting = "Hello, iPad"\nprint(greeting)\n`.
-Copy is tapped in both views, followed by the native Paste menu into the
+Copy is tapped in both views, followed by the native keyboard assistant Paste
+button (context-menu fallback when unavailable) into the
 existing composer and an exact value assertion, including the final newline.
 The conversation copy ID is `codexpad.timeline.reading-code.code.1`; the file
 code control is `codexpad.file-preview-code-copy`. The temporary fixture paste
@@ -56,8 +57,19 @@ and raw fallback, code preview, and truncation.
 
 In GitHub Actions, choose **CodexPad native UI round 2** → **Run workflow**,
 select `codex/ui-round2` and the `profile` input. `all` selects the three
-profiles; a single profile restricts execution to that scenario. Parent
+profiles; a single profile restricts execution to that scenario. `standard-failed`
+rechecks only light/dark. It first requires unchanged application/project and
+Foundation regression inputs against `35f92d0`, whose reading suite passed
+285 assertions in run `37639514789`, then reuses that result without rerunning
+the suite or the already-passed narrow scenario. Parent
 coordination controls push, dispatch and any failed-only retry.
+
+The initial light attempt crashed in the existing guest `do_uname` hostname
+copy (`__strcpy_chk` overflow) before the workspace appeared. Later UI jobs
+set and verify a short hostname only on their ephemeral macOS runner, recording
+it in the artifact. The production kernel remains unchanged. Demo isolates
+UI callbacks from paid model/RPC actions; the App's pre-existing background
+guest boot still runs and is outside this reading verification.
 
 ## Evidence and current status
 

@@ -10,6 +10,7 @@ on:
         default: all
         options:
           - all
+          - standard-failed
           - 11-inch-light
           - 11-inch-dark
           - 11-inch-narrow-XXL
@@ -37,7 +38,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Verify Foundation reading parser and lexer
+        if: inputs.profile != 'standard-failed'
         shell: bash
         run: |
           set -euo pipefail
@@ -45,6 +48,18 @@ jobs:
           git rev-parse HEAD > artifacts/source-commit.txt
           swift --version > artifacts/swift-version.txt
           python3 tests/codexpad_ui_round2/run.py 2>&1 | tee artifacts/reading-regression.log
+      - name: Reuse verified reading sources for failed standard profiles
+        if: inputs.profile == 'standard-failed'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          verified=35f92d07ae0730dbbe49d40b5b1c09548df02e89
+          git diff --exit-code "$verified" HEAD -- app/CodexPad iSH.xcodeproj \
+            tests/codexpad_ui_round2/ReadingRegression.swift tests/codexpad_ui_round2/run.py
+          git rev-parse HEAD > artifacts/source-commit.txt
+          printf '%s\n' "Reading source unchanged from $verified; 285 assertions passed in run 37639514789. Suite not rerun." \
+            | tee artifacts/reading-regression-reused.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -59,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: ${{ fromJSON(inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["11-inch-light","11-inch-dark","11-inch-narrow-XXL"]') }}
+        profile: ${{ fromJSON(inputs.profile == 'standard-failed' && '["11-inch-light","11-inch-dark"]' || inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["11-inch-light","11-inch-dark","11-inch-narrow-XXL"]') }}
     env:
       PROFILE: ${{ matrix.profile }}
       APPEARANCE: ${{ matrix.profile == '11-inch-light' && 'light' || 'dark' }}
@@ -77,6 +92,19 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
+          # The existing guest uname hostname field holds 65 bytes. Keep this
+          # ephemeral runner's host name short; do not change production kernel.
+          sudo scutil --set HostName codexpad-ui
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          hostname = os.uname().nodename
+          assert len(hostname.encode('utf-8')) < 65, 'Runner hostname exceeds guest uname field'
+          Path('artifacts/runner-hostname.json').write_text(json.dumps(dict(
+              hostname=hostname, guest_uname_field_bytes=65,
+              scope='ephemeral macOS UI test runner'), indent=2))
+          print('Verified bounded UI runner hostname:', hostname)
+          PY
           xcodebuild -version > artifacts/xcode-version.txt
           git rev-parse HEAD > artifacts/source-commit.txt
           xcrun simctl list devices available -j > artifacts/simulators.json
@@ -94,6 +122,7 @@ jobs:
           selected = candidates[0]
           selected.update(profile=os.environ['PROFILE'], appearance=os.environ['APPEARANCE'],
                           content_size=os.environ['CONTENT_SIZE'], demo_mode=True,
+                          runner_hostname=os.uname().nodename,
                           narrow_container_simulated=os.environ['PROFILE'] == '11-inch-narrow-XXL',
                           state_is_preboot_selection=True)
           Path('artifacts/validation-context.json').write_text(json.dumps(selected, indent=2))
