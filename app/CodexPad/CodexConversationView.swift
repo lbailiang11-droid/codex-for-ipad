@@ -147,7 +147,11 @@ struct CodexConversationView: View {
                 .coordinateSpace(name: "codexpad.timeline")
                 .background(CodexPalette.surface)
                 .scrollDismissesKeyboard(model.desktopModeEnabled ? .never : .interactively)
+                .modifier(TimelineScrollFollowModifier(followsLatest: $followsLatest))
                 .onPreferenceChange(TimelineContentFrameKey.self) { frame in
+                    // Modern systems report the actual scroll geometry/phase.
+                    // Keep the existing preference fallback for iOS 17 only.
+                    if #available(iOS 18.0, *) { return }
                     // Growth does not disable following. Moving upward does, including
                     // while streamed content is growing at the bottom of the timeline.
                     if let previous = previousContentFrame {
@@ -239,6 +243,42 @@ private struct TimelineContentFrameKey: PreferenceKey {
 
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
         value = nextValue()
+    }
+}
+
+private struct TimelineScrollFollowModifier: ViewModifier {
+    @Binding var followsLatest: Bool
+    @State private var isNearBottom = true
+    @State private var isUserScrolling = false
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .onScrollGeometryChange(for: Bool.self) { geometry in
+                    let remaining = geometry.contentSize.height + geometry.contentInsets.bottom
+                        - geometry.contentOffset.y - geometry.containerSize.height
+                    return remaining <= 80
+                } action: { _, nearBottom in
+                    isNearBottom = nearBottom
+                    if nearBottom {
+                        followsLatest = true
+                    } else if isUserScrolling {
+                        followsLatest = false
+                    }
+                }
+                .onScrollPhaseChange { _, phase in
+                    isUserScrolling = phase == .interacting || phase == .decelerating
+                    // Geometry and phase callbacks can arrive in either order.
+                    // Resizing or growing streamed text alone must not turn off
+                    // following; only real user scrolling away from the end does.
+                    if isUserScrolling && !isNearBottom {
+                        followsLatest = false
+                    }
+                }
+        } else {
+            content
+        }
     }
 }
 

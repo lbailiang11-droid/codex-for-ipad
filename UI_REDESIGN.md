@@ -240,3 +240,18 @@ build 805 IPA can be reused while App/project sources match `4f47705`.
 The test plan and evidence limits are in `tests/codexpad_ui_round4/README.md`.
 Actual results will be recorded after CI, separately from physical-device,
 real Stage Manager, hardware-keyboard and long-connection validation.
+
+Three recorded native attempts established the workbench transitions and
+Done input, corrected two test-driver assumptions, then reproduced a real
+reading defect: after physically returning to earlier content, Latest was
+absent. The first paragraph was visible at y=233 while the last was below
+the viewport at y=1468. The follow state had not paused; the exact old
+preference callback failure was not instrumented.
+
+The only production change is now `CodexConversationView.swift`: iOS 18+
+uses public scroll geometry and phase callbacks, with a Bool end threshold
+and both event orders handled. Actual user scrolling away pauses following;
+idle content growth, resize and programmatic movement do not do so alone.
+iOS 17 retains the original fallback and deployment target, and remains
+unverified. Native reading-only verification and a new ARM64 IPA are required
+for this changed application source. RPC/runtime/permissions are unchanged.

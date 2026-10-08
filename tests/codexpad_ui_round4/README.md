@@ -73,4 +73,26 @@ the bottom, then performs the unchanged upward/rotation/Latest checks.
 
 Manual `reading-only` runs `testRoundFourReadingRemaining` and does not repeat
 the passed workbench transition or Done checks. All failed conclusions remain
-recorded. Reading/Hide results will be appended after actual execution.
+recorded.
+
+Reading-only [37768052457](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37768052457)
+at `4a3e44c` established the real bottom and then actually scrolled to the
+first user paragraph. It failed in 86.204 seconds because Latest did not
+exist. The screenshot shows the complete earlier paragraph; its frame is
+y=233, the final paragraph is at y=1468 below the viewport ending at 839.5,
+and the main vertical scroll bar is at 0%. This is a production follow-state
+defect, rather than a failed gesture or missing Lazy row.
+
+`CodexConversationView.swift` now uses the public iOS 18+ scroll-geometry
+and scroll-phase callbacks for the real outer ScrollView. Only real user
+scrolling away from the 80pt end threshold pauses following; content growth,
+resize and programmatic scrolling do not do so alone. Returning to the end
+resumes following. Both callback orders are handled. The iOS 17 deployment
+target and original preference fallback remain unchanged; that fallback has
+not been validated here. The precise old preference-callback failure was
+not instrumented and is not claimed established.
+
+The same reading-only interaction will validate this production fix. A new
+ARM64 package is now required; the previous build cannot contain the fix.
+Results remain pending execution. No model/RPC/runtime/permission changes
+are included.
