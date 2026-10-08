@@ -41,9 +41,9 @@ in the file but not selected by this workflow.
 The authoritative fixture root is `/root/workspace/reading-demo`.
 `Sources/Welcome.swift` and the conversation Swift block contain the exact
 UTF-8 text `// 你好 👋\nlet greeting = "Hello, iPad"\nprint(greeting)\n`.
-Copy is tapped in both views, followed by the native keyboard assistant Paste
-button (context-menu fallback when unavailable) into the
-existing composer and an exact value assertion, including the final newline.
+The verified standard runs tap Copy in both views, use the native keyboard
+assistant Paste button into the existing composer, and assert the exact value,
+including the final newline. Context-menu Paste was not verified.
 The conversation copy ID is `codexpad.timeline.reading-code.code.1`; the file
 code control is `codexpad.file-preview-code-copy`. The temporary fixture paste
 is then deleted without sending it. No paid inference occurs.
@@ -81,9 +81,29 @@ review, rather than inferring them from a passing value assertion.
 
 ## Evidence and current status
 
-Windows has no Xcode or Apple simulator. Native tests have **not yet run** for
-round 2. Build/test results and original screenshot indexes will be recorded
-after the target commit executes on the macOS GitHub Actions runner.
+The macOS GitHub Actions results are complete. Windows remains the editing and
+artifact-review environment; no native build or simulator ran on Windows.
+
+| Check | Source | Recorded result |
+| --- | --- | --- |
+| Actual Foundation parser/lexer/preview regressions | `35f92d0` | [Run 37639514789](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37639514789): **285 assertions, 0 failures** |
+| Final Foundation verification | `eb774f9` | [Run 37726564902, job 113145968540](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37726564902/job/113145968540): **passed** exact five-input comparison and reused the above result; the suite was not rerun |
+| ARM64 unsigned package | `1ce2def` | [Run 37724252949](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37724252949): **passed** |
+| Dark full reading flow and changed narrow TextKit preview | `1ce2def` | [Run 37724250214](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37724250214): **passed** |
+| Final light full reading flow | `eb774f9` | [Run 37726564902, job 113146082126](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37726564902/job/113146082126): **passed** |
+
+Native validation used **iPad Pro 11-inch (M5), iOS 26.5 and Xcode 26.6
+(17F113)**. Standard profiles used a 1210 × 834-point window. The narrow
+profile used a measured 600-point Demo content container and accessibility XXL
+text; it is not physical Stage Manager evidence. App files are identical between
+`1ce2def` and `eb774f9`; later commits changed the test driver only.
+
+The initial narrow full flow passed, but its screenshot exposed the blank
+200 KB reader described above. After the TextKit fix, the changed narrow preview
+test passed and its new native screenshot was reviewed with the body visibly
+rendered. Current dark screenshots also visibly show conversation code,
+per-file Diff and code-file line numbers. State assertions alone were not used
+to dismiss the earlier blank-rendering defect.
 
 Each artifact records tested source, Xcode version, simulator, appearance,
 content size and explicit Demo mode. `state` in the selected simulator record
@@ -97,5 +117,6 @@ crash manifest or SpringBoard screenshot does not establish the exit cause;
 the previous round's initial `NotRunning` cause remained undetermined.
 
 Physical iPad behavior, hardware keyboards, dynamic Stage Manager resizing,
-real RPC/filesystem operations and ARM64 runtime stability remain separate
-unverified conditions. This workflow does not operate the connected iPad.
+real server connectivity, RPC/filesystem operations and ARM64 runtime stability
+remain separate unverified conditions. This workflow does not operate the
+connected iPad.
