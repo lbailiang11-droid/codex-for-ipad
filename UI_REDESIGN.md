@@ -136,7 +136,36 @@ existing iSH-ARM64 unsigned workflow. It focuses on Settings/Feature Center
 navigation and search, closing/focus, actual option submission and approval
 resolution, state visibility, and a measured 600pt/AX XXL container. Phase-two
 Foundation inputs and reading scenarios are unchanged and are not rerun.
-Results and original native screenshots will be recorded after execution.
+Actual acceptance is recorded below and in `tests/codexpad_ui_round3/README.md`.
 Physical iPad installation/execution, live account/server operations, hardware
 keyboards, dynamic Stage Manager/Split View and long connection stability remain
 unverified. Implementing this stage does not operate the connected iPad.
+
+### Round-three executed results
+
+- Current application/package source `8751898` passed ARM64 Release and the
+  existing RPC connection regressions in [37733906776](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37733906776).
+  The unsigned package has not been signed or installed.
+- Light acceptance combines recorded successful prefix assertions from
+  failed run `37733903968`, successful NoResults/focus assertions from failed
+  run `37743091835`, and the successful remaining request/workbench/state
+  flow in [37745345364](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37745345364).
+  The two failed Light runs retain their actual conclusions.
+- The full dark auxiliary flow passed in that same final matrix, including
+  actual edited-JSON retention, panel handoff/focus, questions and approvals.
+- The measured 600pt / accessibility XXL flow passed in
+  [37747566003](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37747566003)
+  at `3c18db0`. This profile retains `focus:NO`: it does not prove focus
+  restoration or an edited-JSON draft in the narrow container.
+- Later commits only refine native test targeting and profile selection:
+  exact NoResults text/action roles, the native switch track, real keyboard
+  dismissal with draft preservation, request ancestors, and catalog scrolling.
+  Final application/project comparison against the package source is empty;
+  no duplicate ARM64 build or round-two Foundation test run was required.
+- Six actual failed tests and an old-head run cancelled before build/test
+  remain recorded. Native originals, source/run context and per-image hashes
+  are retained in the task's `outputs/CodexPad-UI-Round3` delivery directory.
+
+These are isolated native Demo results. Live account/server actions, real
+Files permissions, physical Stage Manager/Split View, hardware keyboard,
+the inspector above 1280pt and long connection stability remain unverified.

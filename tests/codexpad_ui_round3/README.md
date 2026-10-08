@@ -110,9 +110,38 @@ logs and relevant crash reports on failure. An empty crash manifest does not
 establish why an app exited. Visual review must still inspect text wrapping,
 clipping, contrast, long paths, and action visibility in the original images.
 
-Status at preparation: **native tests and ARM64 build have not run**. Windows
-has no Xcode, so local source/workflow checks do not substitute for compiling
-or executing these tests. Record actual runs, sources, conclusions, original
-PNG review, and any remaining limitations in the delivery report after CI.
+## Executed acceptance — 2026-10-08
+
+Application and device-package source: `8751898dd39fe2a2be076d5d647c4f0d2771020c`.
+Later `7c54a78`, `5b5faf6`, and `3c18db0` only change the XCTest driver,
+workflow selection and documentation. The final comparison of `app/CodexPad`
+and `iSH.xcodeproj` against the package source has no differences.
+
+| Actual check | Result |
+| --- | --- |
+| ARM64 Release / existing RPC regressions | [37733906776](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37733906776) passed; rootfs BusyBox is ELF64 ARM aarch64; IPA is unsigned |
+| Light prefix | [37733903968](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37733903968) remains failed; error dismissal, switches, handoff, search/detail and actual JSON edit passed before the decorative NoResults Image lookup failed |
+| Light middle | [37743091835](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37743091835) remains failed; actual no-result clearing and three focus/draft assertions passed before the driver selected the keyboard prediction ScrollView |
+| Light remaining requests/states | [37745345364](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37745345364), job 113205395723, passed in 170.176 seconds with 0 failures |
+| Full dark Round 3 flow | Same run, job 113205396118, passed in 310.435 seconds with 0 failures; includes final edited JSON draft equality |
+| Full measured 600pt / AX XXL flow | [37747566003](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37747566003), source `3c18db0`, job 113213441514, passed in 254.293 seconds with 0 failures; `focus:NO` does not test focus restoration or an edited JSON draft |
+
+Light acceptance combines the recorded prefix, middle and remaining flow on
+identical application source. It does not relabel either failed Light run as
+a successful full job. Six actual test failures remain in the local failure
+history. Old-head run `37747356564` was cancelled before the build/test step,
+which GitHub records as skipped, and is excluded from acceptance.
+
+The final narrow retry scrolls the real catalog List before requiring the
+searched row to be hittable. Its earlier failure established only that the
+row existed but was not hittable without attempting to scroll; it did not
+identify a production layout fault. No production change was made for it.
+
+Original PNGs, manifests, per-run sources and SHA-256 are retained under the
+task's `outputs/CodexPad-UI-Round3`, alongside `VALIDATION.md`,
+`native-validation.json`, `failure-history.json`, and `package.json`.
+Windows has no Xcode; the build and native interaction results above were
+executed by macOS CI. The unchanged five Foundation inputs were compared,
+so the previous 285 parser/lexer assertions were not repeated.
 Physical iPad, live login/provider data, long-running connection behavior,
 real approval RPCs, and hardware keyboard shortcuts remain unverified here.
