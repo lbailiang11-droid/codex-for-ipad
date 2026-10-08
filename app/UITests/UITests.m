@@ -30,12 +30,37 @@
 - (void)tapRoundThreeDone:(XCUIApplication *)app;
 - (void)revealRoundThreeElement:(XCUIElement *)element scroller:(XCUIElement *)scroller forward:(BOOL)forward inApp:(XCUIApplication *)app;
 - (void)exerciseRoundThreeEmptyWorkbench:(XCUIApplication *)app name:(NSString *)name;
+- (void)setRoundThreeSwitch:(XCUIElement *)control value:(NSString *)value inApp:(XCUIApplication *)app;
 @end
 
 @implementation UITests
 
 - (void)setUp {
     self.continueAfterFailure = NO;
+}
+
+- (void)setRoundThreeSwitch:(XCUIElement *)control value:(NSString *)value inApp:(XCUIApplication *)app {
+    XCTAssertTrue(control.exists && control.isHittable);
+    CGRect frame = control.frame;
+    XCTAssertGreaterThan(frame.size.width, 0);
+    // SwiftUI reports the labelled Toggle's complete row as the AX frame.
+    // The native UISwitch is at its trailing edge; the row's centre is label
+    // space, as the preserved first-run event and screenshot demonstrate.
+    XCUICoordinate *edge = [control coordinateWithNormalizedOffset:CGVectorMake(1, 0.5)];
+    [[edge coordinateWithOffset:CGVectorMake(-MIN(24, frame.size.width / 2), 0)] tap];
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"value == %@", value];
+    XCTNSPredicateExpectation *changed = [[XCTNSPredicateExpectation alloc] initWithPredicate:predicate object:control];
+    BOOL matched = [XCTWaiter waitForExpectations:@[changed] timeout:5] == XCTWaiterResultCompleted;
+    if (!matched) {
+        [self attachScreen:@"round3-switch-value-did-not-change"];
+        XCTAttachment *details = [XCTAttachment attachmentWithString:
+            [NSString stringWithFormat:@"Switch frame=%@; expected=%@; actual=%@\n%@",
+                NSStringFromCGRect(frame), value, control.value, app.debugDescription]];
+        details.name = @"round3-switch-state-and-hierarchy";
+        details.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:details];
+    }
+    XCTAssertTrue(matched, @"Native switch must reach the requested value through an actual tap");
 }
 
 - (XCUIApplication *)launchDemo:(NSArray<NSString *> *)additionalArguments {
@@ -278,6 +303,10 @@
     XCUIElement *banner = [self roundTwoElement:@"codexpad.error-banner" inApp:app];
     XCTAssertTrue([banner waitForExistenceWithTimeout:5]);
     [self attachScreen:[name stringByAppendingString:@"-error-and-waiting"]];
+    XCUIElement *dismissError = [self visibleButton:@"codexpad.error-dismiss" inApp:app];
+    XCTAssertNotNil(dismissError);
+    XCTAssertGreaterThanOrEqual(dismissError.frame.size.width, 43.5);
+    XCTAssertGreaterThanOrEqual(dismissError.frame.size.height, 43.5);
     [self tapRoundTwoButton:@"codexpad.error-dismiss" inApp:app];
     XCTAssertTrue([banner waitForNonExistenceWithTimeout:5]);
 
@@ -290,7 +319,7 @@
     XCTAssertTrue(desktop.isHittable);
     XCTAssertTrue(showAll.isHittable);
     [self attachScreen:[name stringByAppendingString:@"-settings-touch"]];
-    [showAll tap];
+    [self setRoundThreeSwitch:showAll value:@"1" inApp:app];
     XCTAssertEqualObjects(showAll.value, @"1");
     [self openRoundThreeFeaturesFromSettings:app];
     XCUIElement *center = [self roundTwoElement:@"codexpad.feature-center" inApp:app];
@@ -365,7 +394,7 @@
 
     if (!focus) return;
     [self openRoundThreeSettings:app];
-    [desktop tap];
+    [self setRoundThreeSwitch:desktop value:@"1" inApp:app];
     XCTAssertEqualObjects(desktop.value, @"1");
     XCTAssertFalse(showAll.exists);
     [self tapRoundThreeDone:app];
@@ -397,10 +426,10 @@
     [self attachScreen:[name stringByAppendingString:@"-desktop-focus-retained"]];
 
     [self openRoundThreeSettings:app];
-    [desktop tap];
+    [self setRoundThreeSwitch:desktop value:@"0" inApp:app];
     XCTAssertEqualObjects(desktop.value, @"0");
     XCTAssertEqualObjects(showAll.value, @"1", @"The saved touch catalog choice survives Desktop mode");
-    [showAll tap];
+    [self setRoundThreeSwitch:showAll value:@"0" inApp:app];
     XCTAssertEqualObjects(showAll.value, @"0");
     [self tapRoundThreeDone:app];
     XCTAssertFalse(app.buttons[@"codexpad.features"].exists);

@@ -498,6 +498,8 @@ private struct ErrorBanner: View {
             Button(action: dismiss) {
                 Image(systemName: "xmark")
                     .frame(width: 44, height: 44)
+                    .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 10))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(CodexPalette.secondaryInk)
@@ -508,6 +510,7 @@ private struct ErrorBanner: View {
         .overlay {
             RoundedRectangle(cornerRadius: CodexLayout.panelRadius, style: .continuous)
                 .stroke(CodexPalette.danger.opacity(0.35), lineWidth: 1)
+                .allowsHitTesting(false)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("codexpad.error-banner")
