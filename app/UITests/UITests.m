@@ -494,7 +494,9 @@
 }
 
 - (void)waitForRoundFour:(BOOL (^)(void))condition message:(NSString *)message {
-    [self waitForRoundFour:condition timeout:10 message:message];
+    // A cold simulator's AX snapshot can outlast 10 seconds even while later
+    // native frames show the correct ready UI. Keep exact conditions bounded.
+    [self waitForRoundFour:condition timeout:30 message:message];
 }
 
 - (void)waitForRoundFour:(BOOL (^)(void))condition timeout:(NSTimeInterval)timeout message:(NSString *)message {
@@ -508,6 +510,7 @@
 - (void)assertRoundFourWindow:(XCUIApplication *)app landscape:(BOOL)landscape {
     [self waitForRoundFour:^BOOL {
         CGRect frame = [self roundFourWindowFrame:app];
+        NSLog(@"Round-four observed native workspace: %@", NSStringFromCGRect(frame));
         return (landscape
             ? frame.size.width >= 1280 && frame.size.width > frame.size.height
             : frame.size.width < 1280 && frame.size.width < frame.size.height);
