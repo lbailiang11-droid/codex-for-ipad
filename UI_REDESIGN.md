@@ -169,3 +169,60 @@ unverified. Implementing this stage does not operate the connected iPad.
 These are isolated native Demo results. Live account/server actions, real
 Files permissions, physical Stage Manager/Split View, hardware keyboard,
 the inspector above 1280pt and long connection stability remain unverified.
+
+## Round 3 — external visual review closeout
+
+Date: 2026-10-08. Branch: `codex/ui-round3`; baseline `9832b9d`;
+application/test/package source
+`4f47705f7c7ebc7f4c2fb186e93d9263c164a7ae`.
+
+Review of the original Round 3 screenshots identified two visible defects
+despite the earlier interaction passes: Settings had no visible title and
+excess header space, and the AX XXL feature category icon overflowed its
+22pt slot, clipping at the left and covering the beginning of `List`.
+Settings now explicitly selects the native inline navigation title. The
+feature category icon uses body-relative scaled type, its natural size and
+a scaled minimum column width. Existing title/method/body Dynamic Type
+styles and real operation bindings are retained. Only
+`CodexSettingsView.swift` and `CodexFeatureCenterView.swift` changed in
+production; RPC, authentication, permissions, storage, parser and kernel
+code did not change. The UIKit-internal cause of the old missing automatic
+title is still not established.
+
+### Executed closeout results
+
+- Native matrix [37755287303](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37755287303)
+  passed on the same source. Complete Light, job `113238218395`, passed in
+  449.981 seconds with 1 test and 0 failures, artifact `11539949649`. This
+  supplies the previously missing single complete Light success record.
+- Focused dark, job `113238218329`, passed in 161.987 seconds with 0 failures,
+  artifact `11540362289`; focused measured 600pt / AX XXL, job
+  `113238218054`, passed in 186.663 seconds with 0 failures, artifact
+  `11540690889`. These check title lifecycle and real catalog/detail
+  navigation for the two visual fixes, not full dark/narrow regressions.
+- Fresh ARM64 Release [37755287453](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37755287453),
+  job `113238218024`, passed along with the existing RPC regressions.
+  Artifact `11540285044` contains the new unsigned build `805` IPA. It has
+  not been signed or installed.
+- All 26 original PNGs (16 Light, 5 dark, 5 narrow) are retained with raw-byte
+  and SHA-256 matches. Original-pixel review confirms the Settings title
+  in Light and both focused profiles, reduced header blank space, and an
+  intact AX XXL feature icon separated from `List`. Large body text remains
+  enlarged. Actual Done close/reopen and Settings-to-Feature-Center actions
+  passed the native interaction assertions.
+
+The dark initial and named `settings-scrolled` PNGs are byte-identical and
+do not independently prove content movement. The title check after the
+actual Form traversal to the Feature Center entry passed, and the narrow
+scrolled image visibly changes from Input mode to Model with its title
+still visible. The focused dark keyboard screenshot fully shows the icon
+and `List` but covers subsequent row text; the narrow keyboard screenshot
+shows the complete result row. These evidence limits are preserved rather
+than inferred away from passing AX assertions.
+
+Prior delivery and failure history remain intact. New originals, hashes,
+report and package metadata are in the task's separate
+`outputs/CodexPad-UI-Round3-Visual-Fix` directory. No extra parser/lexer or
+general kernel matrix was run. No physical iPad was operated. Live login,
+real RPC/file permissions, hardware keyboard, dynamic Stage Manager and
+long connection stability remain unverified.

@@ -15,8 +15,9 @@ selection JSON does not describe the eventual execution state.
 The first push touching the round-3 workflow, CodexPad UI source, or native
 UITests on `codex/ui-round3` runs one three-job matrix. Manual `profile` inputs
 are `all`, `light`, `light-remaining`, `light-requests`, `dark`, `narrow`,
-`dark-narrow`, and `remaining`; use a single failed profile for any
-necessary retry instead of repeating passed jobs.
+`dark-narrow`, `remaining`, `closeout`, `dark-visual`, and `narrow-visual`;
+use a single failed profile for any necessary retry instead of repeating
+passed jobs.
 `dark-narrow` runs those two jobs together after the remaining light flow passes,
 without concurrency cancellation between separate workflow runs on this branch.
 
@@ -164,6 +165,50 @@ review. Missing-title failures preserve the screen and accessibility tree.
 The new application source requires a fresh ARM64 package. No parser,
 kernel or unrelated UI suites are added to this closeout.
 
-Closeout results are pending execution and will be appended after native CI.
-Previous delivery evidence remains under `outputs/CodexPad-UI-Round3`; the
-new evidence is saved separately under `outputs/CodexPad-UI-Round3-Visual-Fix`.
+### Executed closeout — 2026-10-08
+
+Application, native tests and the new ARM64 package use the same source:
+`4f47705f7c7ebc7f4c2fb186e93d9263c164a7ae`, based on `9832b9d`.
+Only two production UI files changed: `CodexSettingsView.swift` and
+`CodexFeatureCenterView.swift`. The native closeout matrix
+[37755287303](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37755287303)
+completed successfully.
+
+| Actual check | Result and retained artifact |
+| --- | --- |
+| Complete Light / `testRoundThreeLight` | Job `113238218395`, 449.981 seconds, 1 test and 0 failures; artifact `11539949649` |
+| Focused dark / `testRoundThreeVisualFixDark` | Job `113238218329`, 161.987 seconds and 0 failures; artifact `11540362289` |
+| Focused measured 600pt / AX XXL / `testRoundThreeVisualFixNarrow` | Job `113238218054`, 186.663 seconds and 0 failures; artifact `11540690889` |
+| Fresh ARM64 Release / existing RPC regressions | [37755287453](https://github.com/lbailiang11-droid/codex-for-ipad/actions/runs/37755287453), job `113238218024`, passed; artifact `11540285044`, unsigned IPA build `805` |
+
+This is a successful complete Light run for the new source, rather than the
+earlier segmented Light acceptance. The dark and narrow checks in this new
+matrix are focused visual-fix flows, not full Round 3 regressions. No extra
+parser/lexer or general kernel suites were selected.
+
+Twenty-six original PNGs are retained: 16 Light, 5 focused dark and 5 focused
+narrow. Every copied image matches the exported raw bytes and SHA-256.
+Original-image review confirmed the Settings title in Light, and the title
+in initial/reopened Settings for both other profiles. Both settings headers
+have less empty space than the previous screenshots. The AX XXL result row
+shows the complete category icon inside the card, separate from `List`,
+while the existing enlarged body type is retained. The actual Done close,
+reopen and Settings-to-Feature-Center navigation passed their native tests.
+
+Two image limits remain explicit. The focused dark initial and named
+`settings-scrolled` PNGs are byte-identical, so those two images alone do
+not prove content movement. The native title assertion after the actual
+Form scroll to the Feature Center entry passed; the narrow scrolled image
+also visibly changes from Input mode to Model while retaining the title.
+The focused dark search image keeps the keyboard visible and shows the
+complete icon and `List`, but the rest of the row is below the keyboard;
+the AX XXL search image shows the whole result row. AX geometry checks do
+not replace this original-pixel review.
+
+Previous delivery evidence and failed history remain under
+`outputs/CodexPad-UI-Round3`. New evidence, `VALIDATION.md`,
+`native-validation.json`, screenshot manifests/hashes and `package.json`
+are saved separately under `outputs/CodexPad-UI-Round3-Visual-Fix`.
+The new IPA is unsigned and has not been installed. Physical iPad execution,
+live login/RPC/file permissions, hardware keyboard, dynamic Stage Manager
+and long connection stability remain unverified.
