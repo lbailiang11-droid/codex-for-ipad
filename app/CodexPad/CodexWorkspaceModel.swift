@@ -967,6 +967,24 @@ final class CodexWorkspaceModel: ObservableObject {
             let value = values[question.id, default: ""]
             return (question.id, JSONValue.object(["answers": .array([.string(value)])]))
         })
+        if demoMode {
+            // Exercise the same answer construction without sending fixture IDs
+            // to a real server. The notice records the actual submitted values.
+            let result = JSONValue.object(["answers": .object(answers)])
+            pendingRequests.removeAll { $0.id == request.id }
+            if let threadID = request.threadID {
+                if !pendingRequests.contains(where: { $0.threadID == threadID }) {
+                    setThreadActivity(.idle, id: threadID)
+                }
+                upsertTimeline(
+                    TimelineItem(id: "demo-answer-\(request.id)", kind: .notice,
+                                 title: "Demo question answered", body: result.prettyPrinted,
+                                 detail: "No server response was sent.", state: .completed, timestamp: .now),
+                    in: threadID
+                )
+            }
+            return
+        }
         do {
             try await rpc.respond(
                 to: request.rpcID,
@@ -1646,6 +1664,59 @@ final class CodexWorkspaceModel: ObservableObject {
         }
         if ProcessInfo.processInfo.arguments.contains("--codexpad-demo-reading") {
             seedDemoReadingWorkspace()
+        }
+        if ProcessInfo.processInfo.arguments.contains("--codexpad-demo-auxiliary") {
+            seedDemoAuxiliaryWorkspace()
+        }
+    }
+
+    /// Explicit fixtures for auxiliary UI only; production data/actions stay
+    /// unchanged. State variants are selected at launch, not by product controls.
+    private func seedDemoAuxiliaryWorkspace() {
+        let arguments = ProcessInfo.processInfo.arguments
+        let threadID = threads[0].id
+        threads[0].title = "辅助页面与等待状态 · Native auxiliary workspace"
+        threads[0].cwd = "/root/workspace/auxiliary-demo/中文与长路径阅读验证"
+        threads[0].activity = .waiting
+        timelineByThread[threadID] = []
+        account = AccountSummary(authMode: "chatgpt", email: "native-ui-review-with-long-account-name@example.com", plan: "pro")
+        workspacePath = threads[0].cwd
+        directoryPath = workspacePath
+        directoryEntries = []
+        plan = []
+        currentDiff = ""
+        runtimeLog = []
+        errorBanner = "The last request could not complete. Check the local service, then try again."
+        pendingRequests = [
+            PendingServerRequest(
+                id: "question-aux", rpcID: .integer(43),
+                method: "item/tool/requestUserInput", kind: .question, threadID: threadID,
+                title: "Choose how to present the notes",
+                message: "Your answer is needed before this task can continue.", detail: "",
+                questions: [InputQuestion(id: "reading-mode", header: "Reading format",
+                    prompt: "How should the notes be presented?", options: ["Readable summary", "Detailed notes"],
+                    allowsFreeform: true, isSecret: false)], rawParams: .object([:])
+            ),
+            PendingServerRequest(
+                id: "approval-aux", rpcID: .integer(44),
+                method: "item/commandExecution/requestApproval", kind: .command, threadID: threadID,
+                title: "Allow the requested command?",
+                message: "Review the command and choose the scope of approval.",
+                detail: "git status --short", questions: [], rawParams: .object([:])
+            )
+        ]
+        if arguments.contains("--codexpad-demo-state-starting") {
+            enginePhase = .starting
+        } else if arguments.contains("--codexpad-demo-state-connecting") {
+            enginePhase = .connecting(attempt: 2)
+        } else if arguments.contains("--codexpad-demo-state-offline") {
+            enginePhase = .offline(message: "The local service is unavailable. Your conversation history remains on this device.")
+        } else if arguments.contains("--codexpad-demo-state-welcome") {
+            threads = []
+            selectedThreadID = nil
+            pendingRequests = []
+            errorBanner = nil
+            account = AccountSummary()
         }
     }
 

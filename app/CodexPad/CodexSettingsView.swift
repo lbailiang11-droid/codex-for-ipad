@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CodexSettingsView: View {
     @ObservedObject var model: CodexWorkspaceModel
+    var openFeatureCenter: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -17,22 +18,42 @@ struct CodexSettingsView: View {
                 workspaceSection
                 featureSection
 
-                Section("Safety") {
+                Section {
                     Label("Commands and file writes require native approval when Codex requests it.", systemImage: "hand.raised")
+                        .fixedSize(horizontal: false, vertical: true)
                     Label("The app-server is bound only to 127.0.0.1 inside the app.", systemImage: "lock.shield")
+                        .fixedSize(horizontal: false, vertical: true)
+                } header: {
+                    CodexSectionHeader(title: "Safety", symbol: "hand.raised")
                 }
+                .codexFormSection()
 
-                Section("Platform behavior") {
+                Section {
                     Text("iPadOS may suspend active work when CodexPad is backgrounded. Keep the app visible for long turns and builds.")
+                        .fixedSize(horizontal: false, vertical: true)
                     Text("The terminal remains available as a recovery surface from the workspace toolbar.")
+                        .fixedSize(horizontal: false, vertical: true)
+                } header: {
+                    CodexSectionHeader(title: "Platform behavior", symbol: "ipad")
                 }
+                .codexFormSection()
 
-                Section("Open source") {
-                    LabeledContent("Codex", value: "Apache-2.0")
-                    LabeledContent("iSH", value: "GPL with iOS permission")
+                Section {
+                    CodexSettingValue(title: "Codex", value: "Apache-2.0")
+                    CodexSettingValue(title: "iSH", value: "GPL with iOS permission")
                     Text("Source and third-party notices are included with every release.")
+                        .font(.callout)
+                        .foregroundStyle(CodexPalette.secondaryInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                } header: {
+                    CodexSectionHeader(title: "Open source", symbol: "chevron.left.forwardslash.chevron.right")
                 }
+                .codexFormSection()
             }
+            .scrollContentBackground(.hidden)
+            .background(CodexPalette.canvas)
+            .foregroundStyle(CodexPalette.ink)
+            .tint(CodexPalette.cobalt)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Color.clear
                     .frame(height: 24)
@@ -41,10 +62,13 @@ struct CodexSettingsView: View {
             .navigationTitle("Settings")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button { dismiss() } label: {
+                        Text("Done").frame(minWidth: 44, minHeight: 44)
+                    }
+                    .accessibilityIdentifier("codexpad.settings-done")
                 }
             }
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(CodexPalette.surface, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .confirmationDialog(
                 "Unlink the Files folder?",
@@ -59,25 +83,31 @@ struct CodexSettingsView: View {
                 Text("The folder and its files are not deleted. CodexPad only removes its saved access and iSH mount.")
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("codexpad.settings-screen")
     }
 
     private var inputSection: some View {
         Section {
             Toggle("Desktop mode", isOn: $model.desktopModeEnabled)
+                .frame(minHeight: CodexLayout.touchTarget)
                 .accessibilityIdentifier("codexpad.desktop-mode")
 
             if !model.desktopModeEnabled {
                 Toggle("Show all Codex features", isOn: $model.showAllFeaturesInTouchMode)
+                    .frame(minHeight: CodexLayout.touchTarget)
                     .accessibilityIdentifier("codexpad.touch-show-all")
             } else {
                 Label("All compatible features are always visible in desktop mode.", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(CodexPalette.teal)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         } header: {
-            Text("Input mode")
+            CodexSectionHeader(title: "Input mode", symbol: "cursorarrow.rays")
         } footer: {
             Text(inputModeDescription)
         }
+        .codexFormSection()
     }
 
     private var inputModeDescription: String {
@@ -97,18 +127,7 @@ struct CodexSettingsView: View {
                     ProgressView().controlSize(.small)
                 }
             } else {
-                Picker("Model", selection: modelSelection) {
-                    ForEach(model.availableModels.filter { !$0.hidden }) { option in
-                        Text(option.displayName).tag(option.id)
-                    }
-                    if model.availableModels.contains(where: \.hidden) {
-                        Section("Hidden provider entries") {
-                            ForEach(model.availableModels.filter(\.hidden)) { option in
-                                Text("\(option.displayName) - Hidden").tag(option.id)
-                            }
-                        }
-                    }
-                }
+                modelPicker
 
                 if let selected = model.selectedModel {
                     Picker("Reasoning", selection: reasoningSelection) {
@@ -116,6 +135,9 @@ struct CodexSettingsView: View {
                             Text(effort.effort.capitalized).tag(effort.effort)
                         }
                     }
+                    .pickerStyle(.menu)
+                    .frame(minHeight: CodexLayout.touchTarget)
+                    .accessibilityIdentifier("codexpad.settings-reasoning")
 
                     if model.showsCompleteFeatureSet, !selected.serviceTiers.isEmpty {
                         Picker("Service tier", selection: serviceTierSelection) {
@@ -124,6 +146,9 @@ struct CodexSettingsView: View {
                                 Text(tier.name).tag(tier.id)
                             }
                         }
+                        .pickerStyle(.menu)
+                        .frame(minHeight: CodexLayout.touchTarget)
+                        .accessibilityIdentifier("codexpad.settings-service-tier")
                     }
                 }
 
@@ -134,6 +159,9 @@ struct CodexSettingsView: View {
                             Text(mode.name).tag(mode.name)
                         }
                     }
+                    .pickerStyle(.menu)
+                    .frame(minHeight: CodexLayout.touchTarget)
+                    .accessibilityIdentifier("codexpad.settings-collaboration")
                 }
             }
 
@@ -144,8 +172,10 @@ struct CodexSettingsView: View {
                 }
             }
             .disabled(!model.enginePhase.isReady)
+            .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
+            .accessibilityIdentifier("codexpad.settings-refresh-models")
         } header: {
-            Text("Model")
+            CodexSectionHeader(title: "Model", symbol: "cpu")
         } footer: {
             if let selected = model.selectedModel, !selected.description.isEmpty {
                 Text(selected.description)
@@ -153,42 +183,93 @@ struct CodexSettingsView: View {
                 Text("The catalog is loaded from the active Codex provider and includes its supported reasoning and collaboration options.")
             }
         }
+        .codexFormSection()
+    }
+
+    private var modelPicker: some View {
+        Menu {
+            Picker("Model", selection: modelSelection) {
+                ForEach(model.availableModels.filter { !$0.hidden }) { option in
+                    Text(option.displayName).tag(option.id)
+                }
+                if model.availableModels.contains(where: \.hidden) {
+                    Section("Hidden provider entries") {
+                        ForEach(model.availableModels.filter(\.hidden)) { option in
+                            Text("\(option.displayName) - Hidden").tag(option.id)
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Model")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(CodexPalette.secondaryInk)
+                    Text(model.selectedModel?.displayName ?? "Choose model")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(CodexPalette.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CodexPalette.cobalt)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: CodexLayout.touchTarget)
+        }
+        .accessibilityLabel("Model")
+        .accessibilityValue(model.selectedModel?.displayName ?? "Choose model")
+        .accessibilityIdentifier("codexpad.settings-model")
     }
 
     private var accountSection: some View {
-        Section("Account") {
+        Section {
             if model.account.isAuthenticated {
-                LabeledContent("Signed in", value: model.account.displayName)
+                CodexSettingValue(title: "Signed in", value: model.account.displayName)
                 if let plan = model.account.plan {
-                    LabeledContent("Plan", value: plan.capitalized)
+                    CodexSettingValue(title: "Plan", value: plan.capitalized)
                 }
                 Button("Sign out", role: .destructive) {
                     Task { await model.signOut() }
                 }
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
+                .accessibilityIdentifier("codexpad.settings-sign-out")
             } else {
                 Button("Continue with ChatGPT") {
                     Task { await model.signInWithChatGPT() }
                 }
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
                 Button("Use a device code") {
                     Task { await model.signInWithDeviceCode() }
                 }
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
                 SecureField("OpenAI API key", text: $apiKey)
                     .textContentType(.password)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .frame(minHeight: CodexLayout.touchTarget)
                 Button("Save API key") {
                     let key = apiKey
                     apiKey = ""
                     Task { await model.signIn(apiKey: key) }
                 }
                 .disabled(apiKey.isEmpty)
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
             }
 
             if let code = model.deviceCode, let url = model.deviceVerificationURL {
-                LabeledContent("Device code", value: code)
+                CodexSettingValue(title: "Device code", value: code, monospaced: true)
                 Button("Open \(url.host ?? "verification page")") {
                     openURL(url)
                 }
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
             }
+        } header: {
+            CodexSectionHeader(title: "Account", symbol: "person.crop.circle")
         }
+        .codexFormSection()
     }
 
     private var workspaceSection: some View {
@@ -199,38 +280,53 @@ struct CodexSettingsView: View {
                     Task { await model.chooseFilesFolder() }
                 }
                 .disabled(!model.enginePhase.isReady)
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
             case .choosing:
                 HStack {
                     ProgressView()
                     Text("Waiting for Files selection...")
                 }
             case .linked(let name):
-                LabeledContent("Linked folder") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Linked folder")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(CodexPalette.secondaryInk)
                     Text(name)
+                        .font(.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                         .accessibilityIdentifier("codexpad.linked-folder-name")
                 }
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
                 Button("Unlink Files folder", role: .destructive) {
                     confirmsUnlink = true
                 }
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
             case .needsRelink(let message):
                 Label(message, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(CodexPalette.amber)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button("Select folder again") {
                     Task { await model.chooseFilesFolder() }
                 }
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
             }
 
             TextField("Guest path", text: $model.workspacePath)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(.body.monospaced())
-            LabeledContent("Runtime", value: "iSH – Alpine ARM64")
-            LabeledContent("Transport", value: "Guest loopback")
+                .frame(minHeight: CodexLayout.touchTarget)
+                .accessibilityIdentifier("codexpad.settings-workspace-path")
+            CodexSettingValue(title: "Current guest path", value: model.workspacePath, monospaced: true)
+            CodexSettingValue(title: "Runtime", value: "iSH – Alpine ARM64")
+            CodexSettingValue(title: "Transport", value: "Guest loopback")
         } header: {
-            Text("Workspace")
+            CodexSectionHeader(title: "Workspace", symbol: "folder")
         } footer: {
             Text(workspaceDescription)
         }
+        .codexFormSection()
     }
 
     private var workspaceDescription: String {
@@ -248,19 +344,24 @@ struct CodexSettingsView: View {
 
     private var featureSection: some View {
         Section {
-            LabeledContent("Compatible operations", value: "\(CodexFeatureCatalog.compatibleFeatureCount)")
-            LabeledContent("Platform exceptions", value: "\(CodexFeatureCatalog.unavailableFeatureCount)")
+            CodexSettingValue(title: "Compatible operations", value: "\(CodexFeatureCatalog.compatibleFeatureCount)")
+            CodexSettingValue(title: "Platform exceptions", value: "\(CodexFeatureCatalog.unavailableFeatureCount)")
             if model.showsCompleteFeatureSet {
                 Button("Open complete Feature Center", systemImage: "square.grid.3x3") {
-                    dismiss()
-                    DispatchQueue.main.async {
-                        model.showsFeatureCenter = true
+                    if let openFeatureCenter {
+                        openFeatureCenter()
+                    } else {
+                        dismiss()
+                        DispatchQueue.main.async {
+                            model.showsFeatureCenter = true
+                        }
                     }
                 }
+                .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
                 .accessibilityIdentifier("codexpad.open-feature-center")
             }
         } header: {
-            Text("Codex feature coverage")
+            CodexSectionHeader(title: "Codex feature coverage", symbol: "square.grid.3x3")
         } footer: {
             if !model.showsCompleteFeatureSet {
                 Text("Turn on Show all Codex features above to reveal advanced, experimental, and long-tail operations while staying in touch mode.")
@@ -268,6 +369,7 @@ struct CodexSettingsView: View {
                 Text("Every compatible operation in the pinned app-server protocol is available through a native control or the structured Feature Center.")
             }
         }
+        .codexFormSection()
     }
 
     private var modelSelection: Binding<String> {

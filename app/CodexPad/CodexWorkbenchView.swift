@@ -47,11 +47,13 @@ struct CodexWorkbenchView: View {
                         .foregroundStyle(CodexPalette.secondaryInk)
                 }
                 if model.plan.isEmpty {
-                    ContentUnavailableView(
-                        "No plan yet",
+                    CodexStateCard(
+                        title: "No plan yet",
+                        message: "A structured plan appears here when Codex creates one.",
                         systemImage: "checklist",
-                        description: Text("A structured plan appears here when Codex creates one.")
+                        tone: .neutral
                     )
+                    .accessibilityIdentifier("codexpad.plan-empty")
                 } else {
                     ForEach(model.plan) { step in
                         HStack(alignment: .top, spacing: 12) {
@@ -90,10 +92,10 @@ struct CodexWorkbenchView: View {
             .background(CodexPalette.surface)
 
             if model.currentDiff.isEmpty {
-                ContentUnavailableView(
-                    "No changes yet",
-                    systemImage: "doc.badge.gearshape",
-                    description: Text("The current turn’s patch appears here as Codex edits files.")
+                emptyWorkbench(
+                    title: "No changes yet",
+                    message: "The current turn’s patch appears here as Codex edits files.",
+                    systemImage: "doc.badge.gearshape", identifier: "codexpad.changes-empty"
                 )
             } else if let presentation = parsedDiff, presentation.document.rawText == model.currentDiff {
                 GeometryReader { viewport in
@@ -442,10 +444,10 @@ struct CodexWorkbenchView: View {
             if let fileName = model.filePreviewName {
                 filePreview(fileName)
             } else if model.directoryEntries.isEmpty {
-                ContentUnavailableView(
-                    "No entries loaded",
-                    systemImage: "folder",
-                    description: Text("Refresh this directory to load its files and folders.")
+                emptyWorkbench(
+                    title: "No entries loaded",
+                    message: "Refresh this directory to load its files and folders.",
+                    systemImage: "folder", identifier: "codexpad.files-empty"
                 )
             } else {
                 List(model.directoryEntries) { entry in
@@ -582,6 +584,15 @@ struct CodexWorkbenchView: View {
         ["txt", "md", "markdown", "log", "csv", "tsv"].contains((fileName as NSString).pathExtension.lowercased())
     }
 
+    private func emptyWorkbench(title: String, message: String, systemImage: String, identifier: String) -> some View {
+        ScrollView {
+            CodexStateCard(title: title, message: message, systemImage: systemImage)
+                .padding(16)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityIdentifier(identifier)
+    }
+
     private var runtimeView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
@@ -592,6 +603,14 @@ struct CodexWorkbenchView: View {
                     .font(.callout)
                     .foregroundStyle(CodexPalette.secondaryInk)
                 Divider()
+                if model.runtimeLog.isEmpty {
+                    CodexStateCard(
+                        title: "No runtime messages yet",
+                        message: "Local service diagnostics appear here when they become available.",
+                        systemImage: "text.alignleft"
+                    )
+                    .accessibilityIdentifier("codexpad.runtime-empty")
+                }
                 ForEach(model.runtimeLog.indices, id: \.self) { index in
                     Text(model.runtimeLog[index])
                         .font(.caption.monospaced())

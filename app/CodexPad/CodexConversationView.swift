@@ -84,6 +84,16 @@ struct CodexConversationView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         let items = model.selectedTimeline
+                        if items.isEmpty && relevantRequests.isEmpty && !model.isTurnRunning {
+                            CodexStateCard(
+                                title: "Ready for your first message",
+                                message: "Ask Codex to explain, change, or verify something in this workspace.",
+                                systemImage: "text.bubble",
+                                tone: .accent
+                            )
+                            .accessibilityIdentifier("codexpad.empty-conversation")
+                            .padding(.bottom, 24)
+                        }
                         ForEach(items) { item in
                             TimelineCard(
                                 item: item,
@@ -454,12 +464,14 @@ private struct WorkingIndicator: View {
             Text("Codex is working on-device")
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(CodexPalette.secondaryInk)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer()
         }
         .padding(.leading, 43)
         .padding(.vertical, 16)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Codex is working on-device")
+        .accessibilityIdentifier("codexpad.working")
     }
 }
 
@@ -471,10 +483,18 @@ private struct ErrorBanner: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(CodexPalette.danger)
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(CodexPalette.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Workspace error")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(CodexPalette.danger)
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(CodexPalette.ink)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: dismiss) {
                 Image(systemName: "xmark")
                     .frame(width: 44, height: 44)
@@ -482,8 +502,15 @@ private struct ErrorBanner: View {
             .buttonStyle(.plain)
             .foregroundStyle(CodexPalette.secondaryInk)
             .accessibilityLabel("Dismiss error")
+            .accessibilityIdentifier("codexpad.error-dismiss")
         }
         .codexPanel(padding: 12)
+        .overlay {
+            RoundedRectangle(cornerRadius: CodexLayout.panelRadius, style: .continuous)
+                .stroke(CodexPalette.danger.opacity(0.35), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("codexpad.error-banner")
     }
 }
 
@@ -491,16 +518,36 @@ private struct WelcomeWorkspaceView: View {
     @ObservedObject var model: CodexWorkspaceModel
 
     var body: some View {
-        ContentUnavailableView {
-            Label("Start in your local workspace", systemImage: "ipad.gen2.landscape")
-        } description: {
-            Text("Codex runs inside the bundled iSH Linux environment. Create a thread to plan, edit, run commands, and review changes without a remote computer.")
-        } actions: {
-            Button("New thread") {
-                Task { await model.createThread() }
+        GeometryReader { viewport in
+            ScrollView {
+                VStack(spacing: 16) {
+                    if let error = model.errorBanner {
+                        ErrorBanner(message: error) { model.errorBanner = nil }
+                    }
+                    CodexStateCard(
+                        title: "Start in your local workspace",
+                        message: "Create a thread to plan, edit, run commands, and review changes in the bundled iSH Linux environment.",
+                        systemImage: "ipad.gen2.landscape",
+                        tone: .accent
+                    ) {
+                        Button {
+                            Task { await model.createThread() }
+                        } label: {
+                            Label("New thread", systemImage: "square.and.pencil")
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(CodexPalette.cobalt)
+                        .keyboardShortcut("n", modifiers: .command)
+                        .accessibilityIdentifier("codexpad.welcome-new-thread")
+                    }
+                    .accessibilityIdentifier("codexpad.welcome")
+                }
+                .frame(maxWidth: 560)
+                .padding(24)
+                .frame(maxWidth: .infinity, minHeight: viewport.size.height)
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut("n", modifiers: .command)
         }
     }
 }
@@ -509,24 +556,77 @@ private struct EngineUnavailableView: View {
     @ObservedObject var model: CodexWorkspaceModel
 
     var body: some View {
-        ContentUnavailableView {
-            Label(model.enginePhase.title, systemImage: "shippingbox.and.arrow.backward")
-        } description: {
-            switch model.enginePhase {
-            case .offline(let message): Text(message)
-            default: Text("Preparing Alpine, fakefs, and the local Codex app-server.")
-            }
-        } actions: {
-            if case .offline = model.enginePhase {
-                Button("Try again") {
-                    Task { await model.retryConnection() }
+        GeometryReader { viewport in
+            ScrollView {
+                VStack(spacing: 16) {
+                    if let error = model.errorBanner {
+                        ErrorBanner(message: error) { model.errorBanner = nil }
+                    }
+                    CodexStateCard(
+                        title: model.enginePhase.title,
+                        message: message,
+                        systemImage: systemImage,
+                        tone: isOffline ? .warning : .accent,
+                        progress: progress
+                    ) {
+                        if isOffline {
+                            Button {
+                                Task { await model.retryConnection() }
+                            } label: {
+                                Label("Try again", systemImage: "arrow.clockwise")
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(minHeight: 44)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(CodexPalette.cobalt)
+                            .accessibilityIdentifier("codexpad.engine-retry")
+                        }
+                    }
+                    .accessibilityIdentifier(stateIdentifier)
                 }
-                .buttonStyle(.borderedProminent)
-            } else {
-                ProgressView()
-                    .controlSize(.large)
-                    .accessibilityLabel("Starting local Codex engine")
+                .frame(maxWidth: 560)
+                .padding(24)
+                .frame(maxWidth: .infinity, minHeight: viewport.size.height)
             }
+        }
+    }
+
+    private var isOffline: Bool {
+        if case .offline = model.enginePhase { return true }
+        return false
+    }
+
+    private var message: String {
+        switch model.enginePhase {
+        case .offline(let message): message
+        case .connecting: "Waiting for the local Codex service. Your workspace will appear when the connection is ready."
+        default: "Preparing the bundled Linux workspace and local Codex service."
+        }
+    }
+
+    private var systemImage: String {
+        switch model.enginePhase {
+        case .starting: "shippingbox"
+        case .connecting: "bolt.horizontal.circle"
+        case .offline: "pause.circle"
+        case .ready: "ipad.and.arrow.forward"
+        }
+    }
+
+    private var progress: String? {
+        switch model.enginePhase {
+        case .starting: "Preparing workspace"
+        case .connecting(let attempt): "Connection attempt \(attempt)"
+        default: nil
+        }
+    }
+
+    private var stateIdentifier: String {
+        switch model.enginePhase {
+        case .starting: "codexpad.engine-starting"
+        case .connecting: "codexpad.engine-connecting"
+        case .offline: "codexpad.engine-offline"
+        case .ready: "codexpad.engine-ready"
         }
     }
 }

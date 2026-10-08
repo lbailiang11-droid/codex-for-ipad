@@ -1,18 +1,134 @@
 import SwiftUI
 
+/// Presentation-only states share the same surface and reading rules. The caller
+/// owns the state, progress label, and every action; this view does not retry or
+/// change workspace data on its own.
+enum CodexStateTone {
+    case neutral, accent, warning, danger
+
+    var color: Color {
+        switch self {
+        case .neutral: CodexPalette.secondaryInk
+        case .accent: CodexPalette.cobalt
+        case .warning: CodexPalette.amber
+        case .danger: CodexPalette.danger
+        }
+    }
+}
+
+struct CodexStateCard<Actions: View>: View {
+    let title: String
+    let message: String
+    let systemImage: String
+    let tone: CodexStateTone
+    let progress: String?
+    private let actions: Actions
+
+    init(
+        title: String,
+        message: String,
+        systemImage: String,
+        tone: CodexStateTone = .neutral,
+        progress: String? = nil,
+        @ViewBuilder actions: () -> Actions
+    ) {
+        self.title = title
+        self.message = message
+        self.systemImage = systemImage
+        self.tone = tone
+        self.progress = progress
+        self.actions = actions()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .top, spacing: 16) {
+                Image(systemName: systemImage)
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(tone.color)
+                    .frame(width: 48, height: 48)
+                    .background(tone.color.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(title)
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(CodexPalette.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(message)
+                        .font(.body)
+                        .foregroundStyle(CodexPalette.secondaryInk)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let progress {
+                HStack(spacing: 12) {
+                    ProgressView().tint(tone.color)
+                        .accessibilityHidden(true)
+                    Text(progress)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(tone.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            actions
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .codexPanel(padding: 24)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+extension CodexStateCard where Actions == EmptyView {
+    init(title: String, message: String, systemImage: String, tone: CodexStateTone = .neutral, progress: String? = nil) {
+        self.init(title: title, message: message, systemImage: systemImage, tone: tone, progress: progress) {
+            EmptyView()
+        }
+    }
+}
+
+private struct CodexRequestHeader: View {
+    let title: String
+    let status: String
+    let systemImage: String
+    let tone: CodexStateTone
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(status, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tone.color)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(tone.color.opacity(0.1), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .fixedSize(horizontal: false, vertical: true)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(CodexPalette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 struct EngineStatusPill: View {
     let phase: EnginePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: icon)
-                .symbolEffect(.pulse, isActive: isAnimated)
+                .symbolEffect(.pulse, isActive: isAnimated && !reduceMotion)
             Text(phase.title)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(color)
         .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .frame(minHeight: 30)
         .background(color.opacity(0.11), in: Capsule())
         .accessibilityElement(children: .combine)
@@ -464,13 +580,18 @@ struct ApprovalRequestCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(request.title, systemImage: request.kind == .fileChange ? "doc.badge.gearshape" : "hand.raised.fill")
-                .font(.headline)
-                .foregroundStyle(CodexPalette.amber)
+            CodexRequestHeader(
+                title: request.title,
+                status: request.kind == .unsupported ? "Unsupported request" : request.kind == .elicitation ? "Response required" : "Approval required",
+                systemImage: request.kind == .fileChange ? "doc.badge.gearshape" : "hand.raised.fill",
+                tone: .warning
+            )
             Text(request.message)
                 .font(.body)
                 .foregroundStyle(CodexPalette.ink)
+                .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
             if !request.detail.isEmpty {
                 ScrollView(.horizontal) {
                     Text(request.detail)
@@ -483,12 +604,14 @@ struct ApprovalRequestCard: View {
                 .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             }
             ViewThatFits(in: .horizontal) {
-                HStack {
+                HStack(spacing: 10) {
                     actionButtons
                 }
-                VStack(alignment: .leading) {
+                .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 10) {
                     actionButtons
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .controlSize(.large)
@@ -498,6 +621,7 @@ struct ApprovalRequestCard: View {
                 .stroke(CodexPalette.amber.opacity(0.65), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("codexpad.approval.\(request.id)")
     }
 
     @ViewBuilder
@@ -508,26 +632,32 @@ struct ApprovalRequestCard: View {
                 .buttonStyle(.bordered)
                 .tint(CodexPalette.danger)
                 .frame(minHeight: 44)
+                .accessibilityIdentifier("codexpad.approval.decline.\(request.id)")
             Button("Cancel request", role: .cancel) { resolve(.cancel) }
                 .buttonStyle(.bordered)
                 .tint(CodexPalette.secondaryInk)
                 .frame(minHeight: 44)
+                .accessibilityIdentifier("codexpad.approval.cancel.\(request.id)")
         case .unsupported:
             Button("Dismiss") { resolve(.decline) }
                 .buttonStyle(.bordered)
                 .frame(minHeight: 44)
+                .accessibilityIdentifier("codexpad.approval.dismiss.\(request.id)")
         default:
             Button("Allow once") { resolve(.once) }
                 .buttonStyle(.borderedProminent)
                 .tint(CodexPalette.cobalt)
                 .frame(minHeight: 44)
+                .accessibilityIdentifier("codexpad.approval.once.\(request.id)")
             Button("Allow for thread") { resolve(.session) }
                 .buttonStyle(.bordered)
                 .frame(minHeight: 44)
+                .accessibilityIdentifier("codexpad.approval.session.\(request.id)")
             Button("Don’t allow", role: .destructive) { resolve(.decline) }
                 .buttonStyle(.bordered)
                 .tint(CodexPalette.danger)
                 .frame(minHeight: 44)
+                .accessibilityIdentifier("codexpad.approval.decline.\(request.id)")
         }
     }
 }
@@ -540,17 +670,24 @@ struct QuestionRequestCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Label(request.title, systemImage: "questionmark.bubble.fill")
-                .font(.headline)
-                .foregroundStyle(CodexPalette.cobalt)
+            CodexRequestHeader(
+                title: request.title,
+                status: "Answer required",
+                systemImage: "questionmark.bubble.fill",
+                tone: .accent
+            )
             ForEach(request.questions) { question in
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
                     Text(question.header)
-                        .font(.caption.weight(.bold))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(CodexPalette.secondaryInk)
-                        .textCase(.uppercase)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(question.prompt)
                         .font(.body)
+                        .foregroundStyle(CodexPalette.ink)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                     if !question.options.isEmpty {
                         Picker(question.header, selection: answerBinding(for: question.id)) {
                             Text("Choose").tag("")
@@ -559,25 +696,56 @@ struct QuestionRequestCard: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        .tint(CodexPalette.cobalt)
+                        .frame(minHeight: 44)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .background(CodexPalette.raised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(CodexPalette.line, lineWidth: 1)
+                        }
+                        .accessibilityIdentifier("codexpad.question.options.\(question.id)")
+                        if !question.isSecret, let answer = answers[question.id], question.options.contains(answer) {
+                            // Native menu controls may shorten a long selected label.
+                            // Keep that complete option readable without changing the
+                            // same binding used by freeform and structured answers.
+                            Text(answer)
+                                .font(.callout)
+                                .foregroundStyle(CodexPalette.secondaryInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
                     }
                     if question.allowsFreeform || question.options.isEmpty {
                         if question.isSecret {
                             SecureField("Your answer", text: answerBinding(for: question.id))
                                 .textFieldStyle(.roundedBorder)
+                                .frame(minHeight: 44)
+                                .accessibilityIdentifier("codexpad.question.field.\(question.id)")
                         } else {
                             TextField("Your answer", text: answerBinding(for: question.id), axis: .vertical)
                                 .textFieldStyle(.roundedBorder)
+                                .frame(minHeight: 44)
+                                .accessibilityIdentifier("codexpad.question.field.\(question.id)")
                         }
                     }
                 }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             Button("Send answers") { submit(answers) }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .frame(minHeight: 44)
+                .tint(CodexPalette.cobalt)
+                .accessibilityIdentifier("codexpad.question.submit.\(request.id)")
                 .disabled(request.questions.contains { answers[$0.id, default: ""].isEmpty })
         }
         .codexPanel()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("codexpad.question.\(request.id)")
     }
 
     private func answerBinding(for id: String) -> Binding<String> {
@@ -599,24 +767,34 @@ struct AdvancedServerRequestCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(request.title, systemImage: "curlybraces.square")
-                .font(.headline)
-                .foregroundStyle(CodexPalette.cobalt)
+            CodexRequestHeader(title: request.title, status: "Response required", systemImage: "curlybraces.square", tone: .accent)
             Text(request.method)
                 .font(.caption.monospaced())
                 .foregroundStyle(CodexPalette.secondaryInk)
                 .textSelection(.enabled)
             Text(request.message)
                 .font(.body)
+                .foregroundStyle(CodexPalette.ink)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
             DisclosureGroup("Request parameters") {
-                Text(request.rawParams.prettyPrinted)
-                    .font(.caption.monospaced())
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 6)
+                ScrollView(.horizontal) {
+                    Text(request.rawParams.prettyPrinted)
+                        .font(.callout.monospaced())
+                        .foregroundStyle(CodexPalette.ink)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .padding(12)
+                }
+                .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.top, 6)
             }
+            .font(.subheadline)
+            .tint(CodexPalette.cobalt)
             TextEditor(text: $resultText)
                 .font(.callout.monospaced())
+                .foregroundStyle(CodexPalette.ink)
+                .scrollContentBackground(.hidden)
                 .frame(minHeight: 130)
                 .padding(8)
                 .background(CodexPalette.canvas, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
@@ -625,19 +803,26 @@ struct AdvancedServerRequestCard: View {
                         .stroke(CodexPalette.line, lineWidth: 0.5)
                 }
                 .accessibilityLabel("JSON response for \(request.method)")
+                .accessibilityIdentifier("codexpad.advanced.response.\(request.id)")
 
             if let validationError {
                 Label(validationError, systemImage: "exclamationmark.triangle")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(CodexPalette.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("codexpad.advanced.error.\(request.id)")
             }
 
             ViewThatFits(in: .horizontal) {
-                HStack { actionButtons }
-                VStack(alignment: .leading) { actionButtons }
+                HStack(spacing: 10) { actionButtons }
+                    .fixedSize(horizontal: true, vertical: false)
+                VStack(alignment: .leading, spacing: 10) { actionButtons }
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .codexPanel()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("codexpad.advanced.\(request.id)")
         .task {
             if request.method == "item/tool/call" {
                 resultText = JSONValue.object([
@@ -672,10 +857,14 @@ struct AdvancedServerRequestCard: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         .frame(minHeight: 44)
+        .tint(CodexPalette.cobalt)
+        .accessibilityIdentifier("codexpad.advanced.submit.\(request.id)")
         .disabled(isSubmitting || resultText.isEmpty)
         Button("Reject request", role: .destructive, action: reject)
             .buttonStyle(.bordered)
             .controlSize(.large)
             .frame(minHeight: 44)
+            .tint(CodexPalette.danger)
+            .accessibilityIdentifier("codexpad.advanced.reject.\(request.id)")
     }
 }

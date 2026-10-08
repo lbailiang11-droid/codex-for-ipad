@@ -10,6 +10,7 @@ struct CodexPadRootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showsWorkbench = false
     @State private var showsThreadBrowser = false
+    @State private var opensFeatureCenterAfterSettings = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var compactColumn: NavigationSplitViewColumn = .detail
     @State private var workbenchMode: WorkbenchPresentation = .sheet
@@ -57,8 +58,11 @@ struct CodexPadRootView: View {
         }
         .tint(CodexPalette.cobalt)
         .background(CodexPalette.canvas)
-        .sheet(isPresented: $model.showsSettings, onDismiss: model.requestComposerFocus) {
-            CodexSettingsView(model: model)
+        .sheet(isPresented: $model.showsSettings, onDismiss: didDismissSettings) {
+            CodexSettingsView(model: model, openFeatureCenter: {
+                opensFeatureCenterAfterSettings = true
+                model.showsSettings = false
+            })
         }
         .sheet(isPresented: $model.showsFeatureCenter, onDismiss: model.requestComposerFocus) {
             CodexFeatureCenterView(model: model)
@@ -343,6 +347,18 @@ struct CodexPadRootView: View {
 
     private func restoreFocusAfterWorkbench() {
         if !showsWorkbench { model.requestComposerFocus() }
+    }
+
+    private func didDismissSettings() {
+        // Present the next sheet after the native dismissal completes. Focus
+        // returns when the final panel closes, without opening a keyboard
+        // between Settings and the Feature Center.
+        if opensFeatureCenterAfterSettings {
+            opensFeatureCenterAfterSettings = false
+            model.showsFeatureCenter = true
+        } else {
+            model.requestComposerFocus()
+        }
     }
 
     private func prioritizesConversation(width: CGFloat) -> Bool {

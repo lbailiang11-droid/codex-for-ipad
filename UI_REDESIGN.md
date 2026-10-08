@@ -1,4 +1,4 @@
-# CodexPad native UI — round 1
+# CodexPad native UI redesign
 
 Date: 2026-10-07. Branch: `codex/ui-round1`.
 
@@ -108,3 +108,35 @@ Simulator demo results must be labeled separately from physical-device results.
 Real Stage Manager resizing, external keyboard, touch focus and approval RPC
 effects remain unverified until exercised in the production app. Existing
 connection and empty-thread-resume defects remain separate from UI scope.
+
+
+## Round 3 — auxiliary screens and states
+
+Date: 2026-10-08. Branch: `codex/ui-round3`; baseline `6db21ce` after
+independent round-two acceptance. The previous UI and repair worktrees are
+retained. The one-line copy-feedback reset from acceptance is included.
+
+This stage covers Settings, the complete Feature Center, first launch,
+connecting/offline, no thread/conversation/plan/changes/files/runtime messages,
+errors, questions and approvals. Settings/catalog surfaces use the existing
+semantic colors, system type, clear groups, 44pt controls and wrapping values.
+The Feature Center measures its available container and retains a single
+navigation identity across width changes. Panel handoff waits for native
+Settings dismissal; composer focus returns after the final panel closes.
+
+Production bindings, account/model data, request parameters, destructive
+confirmation, choices, runtime/RPC/authentication and file access remain the
+existing implementation. UI fixture state is explicitly selected using
+`--codexpad-demo --codexpad-demo-auxiliary`. The only model addition is local
+Demo question handling built from the same answers object; no fixture answer
+is sent to a server. Existing background guest boot still runs in Demo.
+
+Native acceptance targets the existing iSH simulator scheme on macOS and the
+existing iSH-ARM64 unsigned workflow. It focuses on Settings/Feature Center
+navigation and search, closing/focus, actual option submission and approval
+resolution, state visibility, and a measured 600pt/AX XXL container. Phase-two
+Foundation inputs and reading scenarios are unchanged and are not rerun.
+Results and original native screenshots will be recorded after execution.
+Physical iPad installation/execution, live account/server operations, hardware
+keyboards, dynamic Stage Manager/Split View and long connection stability remain
+unverified. Implementing this stage does not operate the connected iPad.

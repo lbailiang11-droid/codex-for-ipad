@@ -83,4 +83,49 @@ extension View {
         font(.title2.weight(.semibold))
             .foregroundStyle(CodexPalette.ink)
     }
+
+    func codexFormSection() -> some View {
+        listRowBackground(CodexPalette.surface)
+            .listRowSeparatorTint(CodexPalette.line)
+            .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+    }
+}
+
+struct CodexSectionHeader: View {
+    let title: String
+    let symbol: String
+
+    var body: some View {
+        Label(title, systemImage: symbol)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(CodexPalette.secondaryInk)
+            .textCase(nil)
+            .padding(.vertical, 4)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+/// Values stack below their labels so long paths, accounts and provider names
+/// remain readable without squeezing the native form's trailing value column.
+struct CodexSettingValue: View {
+    let title: String
+    let value: String
+    var monospaced = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(CodexPalette.secondaryInk)
+            Text(value)
+                .font(monospaced ? .body.monospaced() : .body)
+                .foregroundStyle(CodexPalette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+        }
+        .frame(minHeight: CodexLayout.touchTarget, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(value)")
+    }
 }

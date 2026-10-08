@@ -23,6 +23,13 @@
 - (void)openRoundTwoEntry:(NSString *)path inApp:(XCUIApplication *)app;
 - (void)revealRoundTwoElement:(XCUIElement *)element scroller:(XCUIElement *)scroller forward:(BOOL)forward inApp:(XCUIApplication *)app;
 - (XCUIElement *)roundTwoTextPreviewWithPrefix:(NSString *)prefix inApp:(XCUIApplication *)app;
+- (void)exerciseRoundThreeAuxiliary:(XCUIApplication *)app name:(NSString *)name focus:(BOOL)focus;
+- (void)exerciseRoundThreePendingRequests:(XCUIApplication *)app name:(NSString *)name;
+- (void)openRoundThreeSettings:(XCUIApplication *)app;
+- (void)openRoundThreeFeaturesFromSettings:(XCUIApplication *)app;
+- (void)tapRoundThreeDone:(XCUIApplication *)app;
+- (void)revealRoundThreeElement:(XCUIElement *)element scroller:(XCUIElement *)scroller forward:(BOOL)forward inApp:(XCUIApplication *)app;
+- (void)exerciseRoundThreeEmptyWorkbench:(XCUIApplication *)app name:(NSString *)name;
 @end
 
 @implementation UITests
@@ -210,6 +217,299 @@
     [self attachScreen:@"11-inch-dark-accessibility-XXL-pending-approval"];
     [allow tap];
     XCTAssertTrue([allow waitForNonExistenceWithTimeout:5]);
+}
+
+- (void)testRoundThreeLight {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary"]];
+    [self exerciseRoundThreeAuxiliary:app name:@"round3-11-inch-light" focus:YES];
+    [self exerciseRoundThreePendingRequests:app name:@"round3-11-inch-light"];
+    [self exerciseRoundThreeEmptyWorkbench:app name:@"round3-11-inch-light"];
+    [app terminate];
+
+    // State fixtures only select real EnginePhase/empty-session values. The
+    // retry/auth buttons are deliberately not invoked: they remain live RPCs.
+    NSDictionary<NSString *, NSString *> *states = @{
+        @"starting": @"codexpad.engine-starting",
+        @"connecting": @"codexpad.engine-connecting",
+        @"offline": @"codexpad.engine-offline",
+        @"welcome": @"codexpad.welcome"
+    };
+    for (NSString *state in @[@"starting", @"connecting", @"offline", @"welcome"]) {
+        app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary",
+            [@"--codexpad-demo-state-" stringByAppendingString:state]]];
+        XCTAssertTrue([[self roundTwoElement:states[state] inApp:app] waitForExistenceWithTimeout:5]);
+        XCTAssertFalse([self roundTwoElement:@"codexpad.composer" inApp:app].exists);
+        if ([state isEqualToString:@"offline"]) {
+            XCTAssertTrue(app.buttons[@"codexpad.engine-retry"].isEnabled);
+        }
+        [self attachScreen:[@"round3-11-inch-light-state-" stringByAppendingString:state]];
+        if ([state isEqualToString:@"welcome"]) {
+            // This existing createThread path is explicitly guarded in Demo.
+            [self tapRoundTwoButton:@"codexpad.welcome-new-thread" inApp:app];
+            XCTAssertTrue([[self roundTwoElement:@"codexpad.empty-conversation" inApp:app] waitForExistenceWithTimeout:5]);
+            XCTAssertTrue([self roundTwoElement:@"codexpad.composer" inApp:app].isHittable);
+            XCTAssertFalse(app.buttons[@"codexpad.send"].isEnabled);
+            [self attachScreen:@"round3-11-inch-light-state-empty-conversation"];
+        }
+        [app terminate];
+    }
+}
+
+- (void)testRoundThreeDark {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary"]];
+    [self exerciseRoundThreeAuxiliary:app name:@"round3-11-inch-dark" focus:YES];
+    [self exerciseRoundThreePendingRequests:app name:@"round3-11-inch-dark"];
+    [self exerciseRoundThreeEmptyWorkbench:app name:@"round3-11-inch-dark"];
+}
+
+- (void)testRoundThreeNarrowAccessibility {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary", @"--codexpad-demo-width=600"]];
+    XCTAssertEqualWithAccuracy([self roundTwoElement:@"codexpad.workspace" inApp:app].frame.size.width, 600, 5,
+        @"Use the actual measured hosting container, not a screenshot crop");
+    [self exerciseRoundThreeAuxiliary:app name:@"round3-simulated-600pt-XXL" focus:NO];
+    [self exerciseRoundThreePendingRequests:app name:@"round3-simulated-600pt-XXL"];
+    [self exerciseRoundThreeEmptyWorkbench:app name:@"round3-simulated-600pt-XXL"];
+}
+
+- (void)exerciseRoundThreeAuxiliary:(XCUIApplication *)app name:(NSString *)name focus:(BOOL)focus {
+    XCUIElement *banner = [self roundTwoElement:@"codexpad.error-banner" inApp:app];
+    XCTAssertTrue([banner waitForExistenceWithTimeout:5]);
+    [self attachScreen:[name stringByAppendingString:@"-error-and-waiting"]];
+    [self tapRoundTwoButton:@"codexpad.error-dismiss" inApp:app];
+    XCTAssertTrue([banner waitForNonExistenceWithTimeout:5]);
+
+    XCTAssertFalse(app.buttons[@"codexpad.features"].exists, @"Touch mode starts with the complete feature entry hidden");
+    [self openRoundThreeSettings:app];
+    XCUIElement *desktop = app.switches[@"codexpad.desktop-mode"];
+    XCUIElement *showAll = app.switches[@"codexpad.touch-show-all"];
+    XCTAssertEqualObjects(desktop.value, @"0");
+    XCTAssertEqualObjects(showAll.value, @"0");
+    XCTAssertTrue(desktop.isHittable);
+    XCTAssertTrue(showAll.isHittable);
+    [self attachScreen:[name stringByAppendingString:@"-settings-touch"]];
+    [showAll tap];
+    XCTAssertEqualObjects(showAll.value, @"1");
+    [self openRoundThreeFeaturesFromSettings:app];
+    XCUIElement *center = [self roundTwoElement:@"codexpad.feature-center" inApp:app];
+    XCTAssertTrue([center waitForExistenceWithTimeout:5]);
+    XCUIElement *search = app.textFields[@"codexpad.feature-search"];
+    XCTAssertTrue([search waitForExistenceWithTimeout:5]);
+    XCTAssertTrue(search.isHittable);
+    [search tap];
+    [search typeText:@"thread/list"];
+    XCUIElement *feature = [self roundTwoElement:@"codexpad.feature.thread/list" inApp:app];
+    XCTAssertTrue([feature waitForExistenceWithTimeout:5]);
+    XCTAssertTrue(feature.isHittable);
+    XCTAssertFalse([self roundTwoElement:@"codexpad.feature.fs/readFile" inApp:app].exists,
+        @"The real search must filter a nonmatching operation");
+    [self attachScreen:[name stringByAppendingString:@"-feature-search"]];
+    [feature tap];
+    XCUIElement *parameters = app.textViews[@"JSON parameters for thread/list"];
+    XCTAssertTrue([parameters waitForExistenceWithTimeout:5]);
+    XCUIElement *detail = nil;
+    // The production detail ScrollView does not require a new test-only ID.
+    // Locate the real ancestor of this existing, precisely labelled editor.
+    for (NSUInteger index = 0; index < app.scrollViews.count; index++) {
+        XCUIElement *candidate = [app.scrollViews elementBoundByIndex:index];
+        if (candidate.textViews[@"JSON parameters for thread/list"].exists) {
+            detail = candidate;
+            break;
+        }
+    }
+    XCTAssertNotNil(detail);
+    XCTAssertTrue(app.staticTexts[@"thread/list"].exists);
+    XCTAssertTrue(app.buttons[@"codexpad.feature-run"].isEnabled);
+    [self attachScreen:[name stringByAppendingString:@"-feature-detail"]];
+    NSString *initialParameters = parameters.value;
+    if (focus) {
+        [self revealRoundThreeElement:parameters scroller:detail forward:YES inApp:app];
+        [parameters tap];
+        [parameters typeText:@" "];
+        XCTAssertNotEqualObjects(parameters.value, initialParameters);
+    }
+    NSString *actualDraft = parameters.value;
+    XCUIElement *back = [self visibleButton:@"codexpad.feature-back" inApp:app];
+    BOOL opensCompactCatalog = back != nil;
+    if (opensCompactCatalog) {
+        [back tap];
+        XCTAssertTrue([app.buttons[@"codexpad.feature-browser-back"] waitForExistenceWithTimeout:5]);
+    }
+    search = app.textFields[@"codexpad.feature-search"];
+    XCTAssertTrue(search.isHittable);
+    [self tapRoundTwoButton:@"codexpad.feature-search-clear" inApp:app];
+    [search tap];
+    [search typeText:@"__codexpad_no_match__"];
+    XCUIElement *noResults = [self roundTwoElement:@"codexpad.feature-no-results" inApp:app];
+    XCTAssertTrue([noResults waitForExistenceWithTimeout:5]);
+    XCUIElement *catalog = [self roundTwoElement:@"codexpad.feature-catalog" inApp:app];
+    XCUIElement *catalogScroller = catalog.collectionViews.firstMatch;
+    if (!catalogScroller.exists) catalogScroller = catalog.scrollViews.firstMatch;
+    if (!catalogScroller.exists) catalogScroller = catalog.tables.firstMatch;
+    XCTAssertTrue(catalogScroller.exists);
+    [self revealRoundThreeElement:noResults scroller:catalogScroller forward:YES inApp:app];
+    XCTAssertFalse(feature.exists);
+    [self attachScreen:[name stringByAppendingString:@"-feature-no-results"]];
+    if (opensCompactCatalog) {
+        [self tapRoundTwoButton:@"codexpad.feature-browser-back" inApp:app];
+        XCTAssertTrue([app.buttons[@"codexpad.feature-browser-back"] waitForNonExistenceWithTimeout:5]);
+    }
+    XCTAssertEqualObjects(parameters.value, actualDraft, @"Returning from catalog must preserve the actual JSON editor draft");
+    [self tapRoundThreeDone:app];
+    XCTAssertTrue([center waitForNonExistenceWithTimeout:5]);
+    XCTAssertTrue([app.buttons[@"codexpad.features"] waitForExistenceWithTimeout:5]);
+    XCTAssertTrue([app.buttons[@"codexpad.input-mode"].label containsString:@"Touch mode"],
+        @"Showing the complete catalog must not enable Desktop input behavior");
+
+    if (!focus) return;
+    [self openRoundThreeSettings:app];
+    [desktop tap];
+    XCTAssertEqualObjects(desktop.value, @"1");
+    XCTAssertFalse(showAll.exists);
+    [self tapRoundThreeDone:app];
+    XCTAssertTrue([app.buttons[@"codexpad.input-mode"].label containsString:@"Desktop mode"]);
+    XCUIElement *composer = [self roundTwoElement:@"codexpad.composer" inApp:app];
+    [composer tap];
+    [composer typeText:@"Settings focus"];
+    [self openRoundThreeSettings:app];
+    XCTAssertEqualObjects(desktop.value, @"1");
+    [self tapRoundThreeDone:app];
+    // No composer tap here: this is the existing restoration contract.
+    [app typeText:@" retained"];
+    XCTAssertEqualObjects(composer.value, @"Settings focus retained");
+
+    [self tapRoundTwoButton:@"codexpad.features" inApp:app];
+    XCTAssertTrue([center waitForExistenceWithTimeout:5]);
+    [self tapRoundThreeDone:app];
+    [app typeText:@" after features"];
+    XCTAssertEqualObjects(composer.value, @"Settings focus retained after features");
+
+    // The Settings-to-Feature Center transition must wait for dismissal and
+    // return focus after the final panel closes, with this real draft intact.
+    [self openRoundThreeSettings:app];
+    [self openRoundThreeFeaturesFromSettings:app];
+    XCTAssertTrue([center waitForExistenceWithTimeout:5]);
+    [self tapRoundThreeDone:app];
+    [app typeText:@" after settings features"];
+    XCTAssertEqualObjects(composer.value, @"Settings focus retained after features after settings features");
+    [self attachScreen:[name stringByAppendingString:@"-desktop-focus-retained"]];
+
+    [self openRoundThreeSettings:app];
+    [desktop tap];
+    XCTAssertEqualObjects(desktop.value, @"0");
+    XCTAssertEqualObjects(showAll.value, @"1", @"The saved touch catalog choice survives Desktop mode");
+    [showAll tap];
+    XCTAssertEqualObjects(showAll.value, @"0");
+    [self tapRoundThreeDone:app];
+    XCTAssertFalse(app.buttons[@"codexpad.features"].exists);
+    XCTAssertTrue([app.buttons[@"codexpad.input-mode"].label containsString:@"Touch mode"]);
+    XCTAssertEqualObjects(composer.value, @"Settings focus retained after features after settings features");
+}
+
+- (void)exerciseRoundThreePendingRequests:(XCUIApplication *)app name:(NSString *)name {
+    XCUIElement *picker = app.buttons[@"codexpad.question.options.reading-mode"];
+    XCUIElement *timeline = app.scrollViews.firstMatch;
+    [self revealRoundThreeElement:picker scroller:timeline forward:NO inApp:app];
+    XCUIElement *submit = app.buttons[@"codexpad.question.submit.question-aux"];
+    XCTAssertFalse(submit.isEnabled, @"An unanswered required question cannot be submitted");
+    [self attachScreen:[name stringByAppendingString:@"-pending-question"]];
+    [picker tap];
+    XCUIElement *option = app.buttons[@"Detailed notes"];
+    XCTAssertTrue([option waitForExistenceWithTimeout:5]);
+    XCTAssertTrue(option.isHittable);
+    [option tap];
+    XCTAssertTrue(submit.isEnabled);
+    XCTAssertEqualObjects([self roundTwoElement:@"codexpad.question.field.reading-mode" inApp:app].value, @"Detailed notes",
+        @"Structured choice and freeform input must still share the same answer binding");
+    [self revealRoundThreeElement:submit scroller:timeline forward:YES inApp:app];
+    [submit tap];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.question.question-aux" inApp:app] waitForNonExistenceWithTimeout:5]);
+    NSPredicate *actualPayload = [NSPredicate predicateWithFormat:
+        @"label CONTAINS %@ AND label CONTAINS %@ AND label CONTAINS %@", @"reading-mode", @"Detailed notes", @"answers"];
+    XCUIElement *notice = [app.staticTexts matchingPredicate:actualPayload].firstMatch;
+    [self revealRoundThreeElement:notice scroller:timeline forward:NO inApp:app];
+    XCTAssertTrue(notice.exists, @"The Demo receipt must expose the actual answer payload constructed by the same production path");
+    XCTAssertFalse(app.staticTexts[@"Could not send your answer"].exists);
+
+    XCUIElement *decline = app.buttons[@"codexpad.approval.decline.approval-aux"];
+    [self revealRoundThreeElement:decline scroller:timeline forward:YES inApp:app];
+    XCTAssertTrue(app.buttons[@"codexpad.approval.once.approval-aux"].exists);
+    XCTAssertTrue(app.buttons[@"codexpad.approval.session.approval-aux"].exists);
+    [self attachScreen:[name stringByAppendingString:@"-pending-approval"]];
+    [decline tap];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.approval.approval-aux" inApp:app] waitForNonExistenceWithTimeout:5]);
+    XCTAssertFalse([self roundTwoElement:@"codexpad.error-banner" inApp:app].exists);
+}
+
+- (void)exerciseRoundThreeEmptyWorkbench:(XCUIApplication *)app name:(NSString *)name {
+    [self tapRoundTwoButton:@"codexpad.toggle-workbench" inApp:app];
+    XCUIElement *workbench = [self roundTwoElement:@"codexpad.workbench" inApp:app];
+    XCTAssertTrue([workbench waitForExistenceWithTimeout:5]);
+    NSArray<NSString *> *tabs = [name containsString:@"light"] ? @[@"Plan", @"Changes", @"Files"] : @[@"Changes"];
+    for (NSString *tab in tabs) {
+        XCTAssertTrue(app.buttons[tab].isHittable);
+        [app.buttons[tab] tap];
+        NSString *identifier = [NSString stringWithFormat:@"codexpad.%@-empty", tab.lowercaseString];
+        XCTAssertTrue([[self roundTwoElement:identifier inApp:app] waitForExistenceWithTimeout:5]);
+        [self attachScreen:[NSString stringWithFormat:@"%@-empty-%@", name, tab.lowercaseString]];
+    }
+    [self tapRoundTwoButton:@"codexpad.close-workbench" inApp:app];
+    XCTAssertTrue([workbench waitForNonExistenceWithTimeout:5]);
+}
+
+- (void)openRoundThreeSettings:(XCUIApplication *)app {
+    XCUIElement *settings = [self visibleButton:@"codexpad.settings" inApp:app];
+    if (settings == nil) {
+        [self tapRoundTwoButton:@"codexpad.threads" inApp:app];
+        XCTAssertTrue([app.buttons[@"codexpad.settings"] waitForExistenceWithTimeout:5]);
+        settings = [self visibleButton:@"codexpad.settings" inApp:app];
+    }
+    XCTAssertNotNil(settings);
+    [settings tap];
+    XCTAssertTrue([app.switches[@"codexpad.desktop-mode"] waitForExistenceWithTimeout:5]);
+}
+
+- (void)tapRoundThreeDone:(XCUIApplication *)app {
+    XCUIElementQuery *doneButtons = [app.buttons matchingPredicate:[NSPredicate predicateWithFormat:@"label == %@", @"Done"]];
+    XCUIElement *done = nil;
+    for (NSUInteger index = 0; index < doneButtons.count; index++) {
+        XCUIElement *candidate = [doneButtons elementBoundByIndex:index];
+        if (candidate.isHittable) { done = candidate; break; }
+    }
+    XCTAssertNotNil(done, @"The currently presented native auxiliary page must have a reachable Done action");
+    [done tap];
+}
+
+- (void)openRoundThreeFeaturesFromSettings:(XCUIApplication *)app {
+    XCUIElement *settings = [self roundTwoElement:@"codexpad.settings-screen" inApp:app];
+    XCTAssertTrue(settings.exists);
+    XCUIElement *scroller = settings.scrollViews.firstMatch;
+    if (!scroller.exists) scroller = settings.collectionViews.firstMatch;
+    if (!scroller.exists) scroller = settings.tables.firstMatch;
+    XCTAssertTrue(scroller.exists, @"Use the presented native Settings form, not a list behind the sheet");
+    XCUIElement *open = app.buttons[@"codexpad.open-feature-center"];
+    [self revealRoundThreeElement:open scroller:scroller forward:YES inApp:app];
+    [open tap];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.feature-center" inApp:app] waitForExistenceWithTimeout:5]);
+    XCTAssertTrue([settings waitForNonExistenceWithTimeout:5], @"Complete Settings dismissal before the next sheet");
+}
+
+- (void)revealRoundThreeElement:(XCUIElement *)element scroller:(XCUIElement *)scroller forward:(BOOL)forward inApp:(XCUIApplication *)app {
+    for (NSUInteger attempt = 0; attempt < 10 && !element.isHittable; attempt++) {
+        if (forward) [scroller swipeUpWithVelocity:XCUIGestureVelocitySlow];
+        else [scroller swipeDownWithVelocity:XCUIGestureVelocitySlow];
+    }
+    if (!element.isHittable) {
+        [self attachScreen:@"native-round3-control-unreachable"];
+        XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
+        tree.name = @"native-round3-control-accessibility-tree";
+        tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:tree];
+    }
+    XCTAssertTrue(element.exists);
+    XCTAssertTrue(element.isHittable);
 }
 
 - (void)testRoundTwoLight {
