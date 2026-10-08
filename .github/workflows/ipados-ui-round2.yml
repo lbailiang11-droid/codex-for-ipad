@@ -11,6 +11,7 @@ on:
         options:
           - all
           - standard-failed
+          - current-fixes
           - 11-inch-light
           - 11-inch-dark
           - 11-inch-narrow-XXL
@@ -39,27 +40,22 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Verify Foundation reading parser and lexer
-        if: inputs.profile != 'standard-failed'
+      - name: Verify or reuse Foundation reading parser and lexer
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts
           git rev-parse HEAD > artifacts/source-commit.txt
           swift --version > artifacts/swift-version.txt
-          python3 tests/codexpad_ui_round2/run.py 2>&1 | tee artifacts/reading-regression.log
-      - name: Reuse verified reading sources for failed standard profiles
-        if: inputs.profile == 'standard-failed'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts
           verified=35f92d07ae0730dbbe49d40b5b1c09548df02e89
-          git diff --exit-code "$verified" HEAD -- app/CodexPad iSH.xcodeproj \
-            tests/codexpad_ui_round2/ReadingRegression.swift tests/codexpad_ui_round2/run.py
-          git rev-parse HEAD > artifacts/source-commit.txt
-          printf '%s\n' "Reading source unchanged from $verified; 285 assertions passed in run 37639514789. Suite not rerun." \
-            | tee artifacts/reading-regression-reused.txt
+          if git diff --quiet "$verified" HEAD -- app/CodexPad/CodexDiffModels.swift \
+            app/CodexPad/CodexFilePreview.swift app/CodexPad/CodexCodeRendering.swift \
+            tests/codexpad_ui_round2/ReadingRegression.swift tests/codexpad_ui_round2/run.py; then
+            printf '%s\n' "Foundation inputs unchanged from $verified; 285 assertions passed in run 37639514789. Suite not rerun." \
+              | tee artifacts/reading-regression-reused.txt
+          else
+            python3 tests/codexpad_ui_round2/run.py 2>&1 | tee artifacts/reading-regression.log
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -74,12 +70,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: ${{ fromJSON(inputs.profile == 'standard-failed' && '["11-inch-light","11-inch-dark"]' || inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["11-inch-light","11-inch-dark","11-inch-narrow-XXL"]') }}
+        profile: ${{ fromJSON(inputs.profile == 'current-fixes' && '["11-inch-light","11-inch-dark","11-inch-narrow-XXL-preview"]' || inputs.profile == 'standard-failed' && '["11-inch-light","11-inch-dark"]' || inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["11-inch-light","11-inch-dark","11-inch-narrow-XXL"]') }}
     env:
       PROFILE: ${{ matrix.profile }}
       APPEARANCE: ${{ matrix.profile == '11-inch-light' && 'light' || 'dark' }}
-      CONTENT_SIZE: ${{ matrix.profile == '11-inch-narrow-XXL' && 'accessibility-extra-extra-large' || 'large' }}
-      TEST_METHOD: ${{ matrix.profile == '11-inch-light' && 'testRoundTwoLight' || matrix.profile == '11-inch-dark' && 'testRoundTwoDark' || 'testRoundTwoNarrowAccessibility' }}
+      CONTENT_SIZE: ${{ startsWith(matrix.profile, '11-inch-narrow-XXL') && 'accessibility-extra-extra-large' || 'large' }}
+      TEST_METHOD: ${{ matrix.profile == '11-inch-light' && 'testRoundTwoLight' || matrix.profile == '11-inch-dark' && 'testRoundTwoDark' || matrix.profile == '11-inch-narrow-XXL-preview' && 'testRoundTwoNarrowPreview' || 'testRoundTwoNarrowAccessibility' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -123,7 +119,7 @@ jobs:
           selected.update(profile=os.environ['PROFILE'], appearance=os.environ['APPEARANCE'],
                           content_size=os.environ['CONTENT_SIZE'], demo_mode=True,
                           runner_hostname=os.uname().nodename,
-                          narrow_container_simulated=os.environ['PROFILE'] == '11-inch-narrow-XXL',
+                          narrow_container_simulated=os.environ['PROFILE'].startswith('11-inch-narrow-XXL'),
                           state_is_preboot_selection=True)
           Path('artifacts/validation-context.json').write_text(json.dumps(selected, indent=2))
           print(selected['udid'])

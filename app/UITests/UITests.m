@@ -22,6 +22,7 @@
 - (void)openRoundTwoWorkbench:(XCUIApplication *)app;
 - (void)openRoundTwoEntry:(NSString *)path inApp:(XCUIApplication *)app;
 - (void)revealRoundTwoElement:(XCUIElement *)element scroller:(XCUIElement *)scroller forward:(BOOL)forward inApp:(XCUIApplication *)app;
+- (XCUIElement *)roundTwoTextPreviewWithPrefix:(NSString *)prefix inApp:(XCUIApplication *)app;
 @end
 
 @implementation UITests
@@ -231,6 +232,33 @@
     [self exerciseRoundTwoReading:app name:@"round2-simulated-600pt-content-XXL" clipboard:NO];
 }
 
+- (void)testRoundTwoNarrowPreview {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-reading", @"--codexpad-demo-width=600"]];
+    XCUIElement *workspace = [self roundTwoElement:@"codexpad.workspace" inApp:app];
+    XCTAssertEqualWithAccuracy(workspace.frame.size.width, 600, 5);
+    [self openRoundTwoWorkbench:app];
+    XCTAssertTrue(app.buttons[@"Files"].isHittable);
+    [app.buttons[@"Files"] tap];
+
+    NSString *root = @"/root/workspace/reading-demo";
+    [self openRoundTwoEntry:[root stringByAppendingString:@"/large.txt"] inApp:app];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.file-preview-truncated" inApp:app] waitForExistenceWithTimeout:5]);
+    XCTAssertEqualObjects(app.buttons[@"codexpad.file-preview-copy"].label, @"Copy preview");
+    [self roundTwoTextPreviewWithPrefix:@"Readable preview line.\n" inApp:app];
+    [self attachScreen:@"round2-simulated-600pt-content-XXL-native-text-truncated-preview"];
+    [self tapRoundTwoButton:@"codexpad.file-preview-back" inApp:app];
+
+    [self openRoundTwoEntry:[root stringByAppendingString:@"/notes.txt"] inApp:app];
+    XCUIElement *notes = [self roundTwoTextPreviewWithPrefix:@"CodexPad reading workspace.\n" inApp:app];
+    XCTAssertEqualObjects(notes.value, @"CodexPad reading workspace.\nText stays selectable.\n");
+    [self attachScreen:@"round2-simulated-600pt-content-XXL-native-text-plain-preview"];
+    [self tapRoundTwoButton:@"codexpad.file-preview-back" inApp:app];
+    [self tapRoundTwoButton:@"codexpad.close-workbench" inApp:app];
+    XCTAssertTrue([[self roundTwoElement:@"codexpad.workbench" inApp:app] waitForNonExistenceWithTimeout:5]);
+    XCTAssertTrue([self roundTwoElement:@"codexpad.composer" inApp:app].isHittable);
+}
+
 - (void)exerciseRoundTwoReading:(XCUIApplication *)app name:(NSString *)name clipboard:(BOOL)clipboard {
     NSString *code = @"// 你好 👋\nlet greeting = \"Hello, iPad\"\nprint(greeting)\n";
     NSString *root = @"/root/workspace/reading-demo";
@@ -314,14 +342,15 @@
     XCTAssertTrue([[self roundTwoElement:@"codexpad.file-preview-truncated" inApp:app] waitForExistenceWithTimeout:5]);
     XCTAssertEqualObjects(app.buttons[@"codexpad.file-preview-copy"].label, @"Copy preview");
     XCTAssertTrue(app.buttons[@"codexpad.file-preview-copy"].isEnabled);
+    [self roundTwoTextPreviewWithPrefix:@"Readable preview line.\n" inApp:app];
     // Stay at the top; the fixture has thousands of lines below the honest
     // 200 KB cap notice, which should remain visible in this screenshot.
     [self attachScreen:[name stringByAppendingString:@"-file-truncated-preview"]];
     [self tapRoundTwoButton:@"codexpad.file-preview-back" inApp:app];
 
     [self openRoundTwoEntry:[root stringByAppendingString:@"/notes.txt"] inApp:app];
-    NSPredicate *plainText = [NSPredicate predicateWithFormat:@"label CONTAINS %@", @"Text stays selectable."];
-    XCTAssertTrue([[app.staticTexts matchingPredicate:plainText].firstMatch waitForExistenceWithTimeout:5]);
+    XCUIElement *plainText = [self roundTwoTextPreviewWithPrefix:@"CodexPad reading workspace.\n" inApp:app];
+    XCTAssertEqualObjects(plainText.value, @"CodexPad reading workspace.\nText stays selectable.\n");
     XCTAssertFalse(app.buttons[@"codexpad.file-preview-code-copy"].exists);
     if (clipboard) [self attachScreen:[name stringByAppendingString:@"-file-plain-text"]];
     [self tapRoundTwoButton:@"codexpad.close-workbench" inApp:app];
@@ -333,6 +362,21 @@
     XCUIElement *workbench = [self roundTwoElement:@"codexpad.workbench" inApp:app];
     if (!workbench.exists) [self tapRoundTwoButton:@"codexpad.toggle-workbench" inApp:app];
     XCTAssertTrue([workbench waitForExistenceWithTimeout:5]);
+}
+
+- (XCUIElement *)roundTwoTextPreviewWithPrefix:(NSString *)prefix inApp:(XCUIApplication *)app {
+    XCUIElement *text = app.textViews[@"codexpad.file-preview-text"];
+    XCTAssertTrue([text waitForExistenceWithTimeout:5]);
+    NSPredicate *content = [NSPredicate predicateWithFormat:@"value BEGINSWITH %@", prefix];
+    XCTNSPredicateExpectation *loaded = [[XCTNSPredicateExpectation alloc] initWithPredicate:content object:text];
+    XCTAssertEqual([XCTWaiter waitForExpectations:@[loaded] timeout:5], XCTWaiterResultCompleted,
+        @"The actual native text view must expose the preview's source text");
+    CGRect frame = text.frame;
+    CGRect visible = CGRectIntersection(frame, [self roundTwoElement:@"codexpad.workbench" inApp:app].frame);
+    XCTAssertGreaterThan(CGRectGetWidth(visible), 100);
+    XCTAssertGreaterThan(CGRectGetHeight(visible), 40);
+    XCTAssertTrue(text.isHittable, @"Preview body must occupy a visible, reachable viewport");
+    return text;
 }
 
 - (void)openRoundTwoEntry:(NSString *)path inApp:(XCUIApplication *)app {

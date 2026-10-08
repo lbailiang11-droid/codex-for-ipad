@@ -31,10 +31,11 @@ not establish real filesystem/server availability.
   round trips run in the two standard profiles. This is a simulated content container,
   not proof of physical Stage Manager resizing.
 
-The workflow runs `python3 tests/codexpad_ui_round2/run.py` once in a separate
-`foundation-reading` job, which all native profiles require before the UI
-build. That compiles/runs the pure Foundation parser and lexer regressions
-with the runner's Swift toolchain. Round-1 model/send/stop tests are retained
+The workflow's separate `foundation-reading` job compiles/runs the actual
+Foundation parser and lexer regression inputs when they change. When those
+exact five inputs match `35f92d0`, it records reuse of the 285 passing assertions
+from run `37639514789` instead of rerunning the suite. All native profiles require
+this verified source check before the UI build. Round-1 model/send/stop tests are retained
 in the file but not selected by this workflow.
 
 The authoritative fixture root is `/root/workspace/reading-demo`.
@@ -58,10 +59,9 @@ and raw fallback, code preview, and truncation.
 In GitHub Actions, choose **CodexPad native UI round 2** → **Run workflow**,
 select `codex/ui-round2` and the `profile` input. `all` selects the three
 profiles; a single profile restricts execution to that scenario. `standard-failed`
-rechecks only light/dark. It first requires unchanged application/project and
-Foundation regression inputs against `35f92d0`, whose reading suite passed
-285 assertions in run `37639514789`, then reuses that result without rerunning
-the suite or the already-passed narrow scenario. Parent
+rechecks only light/dark. `current-fixes` adds only `testRoundTwoNarrowPreview`
+at 600pt/XXL to those standard profiles, checking the changed text preview
+without repeating the already-passed narrow Diff/code/navigation sequence. Parent
 coordination controls push, dispatch and any failed-only retry.
 
 The initial light attempt crashed in the existing guest `do_uname` hostname
@@ -70,6 +70,14 @@ set and verify a short hostname only on their ephemeral macOS runner, recording
 it in the artifact. The production kernel remains unchanged. Demo isolates
 UI callbacks from paid model/RPC actions; the App's pre-existing background
 guest boot still runs and is outside this reading verification.
+
+The first narrow screenshot exposed a blank 200 KB SwiftUI Text layer despite
+passing state assertions. The plain-text reader now wraps a read-only native
+UITextView in SwiftUI so TextKit lays out the visible viewport, with the complete
+source available for selection/copy. Plain preview tests read its actual value;
+large preview tests require the expected prefix, a reachable viewport and a
+native screenshot. Line wrapping and actual visible text still require screenshot
+review, rather than inferring them from a passing value assertion.
 
 ## Evidence and current status
 

@@ -537,6 +537,7 @@ struct CodexWorkbenchView: View {
             if model.filePreviewIsTruncated && !model.filePreviewIsBinary {
                 Label("Preview limited to the first 200 KB. Copy includes only this preview.", systemImage: "info.circle")
                     .font(.caption)
+                    .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(CodexPalette.amber)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
@@ -554,27 +555,22 @@ struct CodexWorkbenchView: View {
                 .accessibilityIdentifier("codexpad.file-preview-binary")
             } else if model.filePreview.isEmpty {
                 ContentUnavailableView("Empty file", systemImage: "doc.text")
+            } else if isPlainTextFile(fileName) {
+                // A single very tall SwiftUI Text can leave a 200 KB preview
+                // blank at accessibility sizes. TextKit lays out the visible
+                // viewport while retaining the full source and native selection.
+                CodexPlainTextPreview(text: model.filePreview)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical) {
-                    if isPlainTextFile(fileName) {
-                        Text(model.filePreview)
-                            .font(.body)
-                            .lineSpacing(5)
-                            .foregroundStyle(CodexPalette.ink)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
-                    } else {
-                        CodexCodeView(
-                            code: model.filePreview,
-                            language: CodexCodeLanguage.language(forFileName: fileName),
-                            showsLineNumbers: true,
-                            copyID: "codexpad.file-preview-code-copy",
-                            copyLabel: model.filePreviewIsTruncated ? "Copy preview" : "Copy file content"
-                        )
-                        .padding(16)
-                    }
+                    CodexCodeView(
+                        code: model.filePreview,
+                        language: CodexCodeLanguage.language(forFileName: fileName),
+                        showsLineNumbers: true,
+                        copyID: "codexpad.file-preview-code-copy",
+                        copyLabel: model.filePreviewIsTruncated ? "Copy preview" : "Copy file content"
+                    )
+                    .padding(16)
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("codexpad.file-preview-content")
@@ -623,6 +619,58 @@ struct CodexWorkbenchView: View {
         case "inProgress", "in_progress": CodexPalette.cobalt
         default: CodexPalette.secondaryInk
         }
+    }
+}
+
+/// Read-only native scrolling avoids creating one enormous SwiftUI text layer.
+private struct CodexPlainTextPreview: UIViewRepresentable {
+    let text: String
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    final class Coordinator {
+        var text: String?
+        var font: UIFont?
+        var colorScheme: ColorScheme?
+        var dynamicTypeSize: DynamicTypeSize?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.backgroundColor = .clear
+        view.isEditable = false
+        view.isSelectable = true
+        view.isScrollEnabled = true
+        view.alwaysBounceVertical = true
+        view.adjustsFontForContentSizeCategory = true
+        view.textContainerInset = UIEdgeInsets(top: 16, left: 16, bottom: 16, right: 16)
+        view.textContainer.lineFragmentPadding = 0
+        view.accessibilityIdentifier = "codexpad.file-preview-text"
+        view.accessibilityLabel = "File contents"
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return view
+    }
+
+    func updateUIView(_ view: UITextView, context: Context) {
+        let font = UIFont.preferredFont(forTextStyle: .body, compatibleWith: view.traitCollection)
+        let coordinator = context.coordinator
+        let changedText = coordinator.text != text
+        guard changedText || coordinator.font != font || coordinator.colorScheme != colorScheme
+                || coordinator.dynamicTypeSize != dynamicTypeSize else { return }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 5
+        view.attributedText = NSAttributedString(string: text, attributes: [
+            .font: font,
+            .foregroundColor: UIColor(CodexPalette.ink),
+            .paragraphStyle: paragraph
+        ])
+        coordinator.text = text
+        coordinator.font = font
+        coordinator.colorScheme = colorScheme
+        coordinator.dynamicTypeSize = dynamicTypeSize
+        if changedText { view.setContentOffset(.zero, animated: false) }
     }
 }
 
