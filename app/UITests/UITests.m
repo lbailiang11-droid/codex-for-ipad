@@ -539,13 +539,33 @@
     // Remove only this known fixture paste, keeping the same App launch and
     // avoiding a second cold launch just to obtain an empty composer.
     NSMutableString *deleteKeys = [NSMutableString string];
-    [expected enumerateSubstringsInRange:NSMakeRange(0, expected.length)
-        options:NSStringEnumerationByComposedCharacterSequences
-        usingBlock:^(NSString *substring, NSRange substringRange, NSRange enclosingRange, BOOL *stop) {
-            [deleteKeys appendString:XCUIKeyboardKeyDelete];
-        }];
-    [composer typeText:deleteKeys];
-    XCTAssertTrue([(NSString *)composer.value length] == 0);
+    for (NSUInteger index = 0; index < expected.length; index++) {
+        [deleteKeys appendString:XCUIKeyboardKeyDelete];
+    }
+    NSPredicate *emptyDraft = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
+        id value = composer.value;
+        NSString *current = [value isKindOfClass:NSString.class] ? value : nil;
+        BOOL emptyValue = current.length == 0 || [current isEqualToString:composer.placeholderValue];
+        XCUIElement *send = app.buttons[@"codexpad.send"];
+        return emptyValue && send.exists && !send.isEnabled;
+    }];
+    BOOL cleared = NO;
+    // The failed light recording showed dropped delete events and a remaining
+    // prefix. Keep deletion bounded to this already-verified fixture and require
+    // the real empty input + disabled Send state before proceeding.
+    for (NSUInteger attempt = 0; attempt < 3 && !cleared; attempt++) {
+        [composer typeText:deleteKeys];
+        XCTNSPredicateExpectation *empty = [[XCTNSPredicateExpectation alloc] initWithPredicate:emptyDraft object:composer];
+        cleared = [XCTWaiter waitForExpectations:@[empty] timeout:2] == XCTWaiterResultCompleted;
+    }
+    if (!cleared) {
+        [self attachScreen:@"native-round2-fixture-cleanup-incomplete"];
+        XCTAttachment *evidence = [XCTAttachment attachmentWithString:app.debugDescription];
+        evidence.name = @"native-round2-fixture-cleanup-actual-state";
+        evidence.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:evidence];
+    }
+    XCTAssertTrue(cleared, @"The copied fixture must be fully removed; residual text cannot be treated as empty");
     XCUIElement *keyboard = app.keyboards.firstMatch;
     if (keyboard.exists) {
         // The current App has no codexpad.dismiss-keyboard control. Use the
