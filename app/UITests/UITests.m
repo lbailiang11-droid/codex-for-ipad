@@ -545,13 +545,14 @@
     NSPredicate *emptyDraft = [NSPredicate predicateWithBlock:^BOOL(id object, NSDictionary *bindings) {
         id value = composer.value;
         NSString *current = [value isKindOfClass:NSString.class] ? value : nil;
-        BOOL emptyValue = current.length == 0 || [current isEqualToString:composer.placeholderValue];
+        BOOL emptyValue = value == nil || (current != nil &&
+            (current.length == 0 || [current isEqualToString:composer.placeholderValue]));
         XCUIElement *send = app.buttons[@"codexpad.send"];
         return emptyValue && send.exists && !send.isEnabled;
     }];
     BOOL cleared = NO;
-    // The failed light recording showed dropped delete events and a remaining
-    // prefix. Keep deletion bounded to this already-verified fixture and require
+    // The failed light recording showed a remaining prefix after bulk deletion.
+    // Keep deletion bounded to this already-verified fixture and require
     // the real empty input + disabled Send state before proceeding.
     for (NSUInteger attempt = 0; attempt < 3 && !cleared; attempt++) {
         [composer typeText:deleteKeys];
