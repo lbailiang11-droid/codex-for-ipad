@@ -17,6 +17,9 @@ on:
           - narrow
           - dark-narrow
           - remaining
+          - closeout
+          - dark-visual
+          - narrow-visual
   push:
     branches: [codex/ui-round3]
     paths:
@@ -38,12 +41,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: ${{ fromJSON(inputs.profile == 'remaining' && '["light-requests","dark","narrow"]' || inputs.profile == 'dark-narrow' && '["dark","narrow"]' || inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["light","dark","narrow"]') }}
+        profile: ${{ fromJSON(inputs.profile == 'closeout' && '["light","dark-visual","narrow-visual"]' || inputs.profile == 'remaining' && '["light-requests","dark","narrow"]' || inputs.profile == 'dark-narrow' && '["dark","narrow"]' || inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["light","dark","narrow"]') }}
     env:
       PROFILE: ${{ matrix.profile }}
       APPEARANCE: ${{ (matrix.profile == 'light' || matrix.profile == 'light-remaining' || matrix.profile == 'light-requests') && 'light' || 'dark' }}
-      CONTENT_SIZE: ${{ matrix.profile == 'narrow' && 'accessibility-extra-extra-large' || 'large' }}
-      TEST_METHOD: ${{ matrix.profile == 'light-requests' && 'testRoundThreeLightRequestsRemaining' || matrix.profile == 'light-remaining' && 'testRoundThreeLightRemaining' || matrix.profile == 'light' && 'testRoundThreeLight' || matrix.profile == 'dark' && 'testRoundThreeDark' || 'testRoundThreeNarrowAccessibility' }}
+      CONTENT_SIZE: ${{ (matrix.profile == 'narrow' || matrix.profile == 'narrow-visual') && 'accessibility-extra-extra-large' || 'large' }}
+      TEST_METHOD: ${{ matrix.profile == 'dark-visual' && 'testRoundThreeVisualFixDark' || matrix.profile == 'narrow-visual' && 'testRoundThreeVisualFixNarrow' || matrix.profile == 'light-requests' && 'testRoundThreeLightRequestsRemaining' || matrix.profile == 'light-remaining' && 'testRoundThreeLightRemaining' || matrix.profile == 'light' && 'testRoundThreeLight' || matrix.profile == 'dark' && 'testRoundThreeDark' || 'testRoundThreeNarrowAccessibility' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,9 +90,11 @@ jobs:
           selected.update(profile=os.environ['PROFILE'], appearance=os.environ['APPEARANCE'],
                           content_size=os.environ['CONTENT_SIZE'], demo_mode=True,
                           runner_hostname=os.uname().nodename,
-                          narrow_container_simulated=os.environ['PROFILE'] == 'narrow',
+                          narrow_container_simulated=os.environ['PROFILE'] in ('narrow', 'narrow-visual'),
                           demo_fixture='--codexpad-demo --codexpad-demo-auxiliary',
-                          scope='settings, feature navigation, pending requests and state presentation',
+                          scope=('settings title lifecycle and feature-row visual review'
+                                 if os.environ['PROFILE'] in ('dark-visual', 'narrow-visual')
+                                 else 'settings, feature navigation, pending requests and state presentation'),
                           state_is_preboot_selection=True)
           Path('artifacts/validation-context.json').write_text(json.dumps(selected, indent=2))
           print(selected['udid'])

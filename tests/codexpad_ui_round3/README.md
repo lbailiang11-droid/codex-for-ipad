@@ -145,3 +145,25 @@ executed by macOS CI. The unchanged five Foundation inputs were compared,
 so the previous 285 parser/lexer assertions were not repeated.
 Physical iPad, live login/provider data, long-running connection behavior,
 real approval RPCs, and hardware keyboard shortcuts remain unverified here.
+
+## External visual review closeout
+
+After `9832b9d`, external review of the original screenshots identified two
+display defects despite the successful interaction tests: the Settings title
+was absent, and the category icon overran its fixed 22pt slot at AX XXL.
+Settings now explicitly uses the native inline title. Feature icons use a
+body-relative scaled font, natural size and a scaled minimum column width;
+the title and method fonts retain their original Dynamic Type behavior.
+
+Manual `closeout` runs the existing complete Light flow plus the focused
+`dark-visual` and `narrow-visual` tests. These record initial, scrolled and
+reopened Settings, the real filtered result with the keyboard visible, and
+actual detail navigation. Native title presence/geometry is checked, while
+pixel-level icon overlap and title appearance still require original PNG
+review. Missing-title failures preserve the screen and accessibility tree.
+The new application source requires a fresh ARM64 package. No parser,
+kernel or unrelated UI suites are added to this closeout.
+
+Closeout results are pending execution and will be appended after native CI.
+Previous delivery evidence remains under `outputs/CodexPad-UI-Round3`; the
+new evidence is saved separately under `outputs/CodexPad-UI-Round3-Visual-Fix`.

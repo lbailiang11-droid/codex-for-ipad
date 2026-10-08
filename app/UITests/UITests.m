@@ -26,7 +26,9 @@
 - (void)exerciseRoundThreeAuxiliary:(XCUIApplication *)app name:(NSString *)name focus:(BOOL)focus;
 - (void)exerciseRoundThreePendingRequests:(XCUIApplication *)app name:(NSString *)name;
 - (void)openRoundThreeSettings:(XCUIApplication *)app;
+- (void)assertRoundThreeSettingsTitle:(XCUIApplication *)app;
 - (void)openRoundThreeFeaturesFromSettings:(XCUIApplication *)app;
+- (void)exerciseRoundThreeVisualFix:(XCUIApplication *)app name:(NSString *)name;
 - (void)tapRoundThreeDone:(XCUIApplication *)app;
 - (void)revealRoundThreeElement:(XCUIElement *)element scroller:(XCUIElement *)scroller forward:(BOOL)forward inApp:(XCUIApplication *)app;
 - (void)exerciseRoundThreeEmptyWorkbench:(XCUIApplication *)app name:(NSString *)name;
@@ -338,6 +340,68 @@
     [self exerciseRoundThreeEmptyWorkbench:app name:@"round3-simulated-600pt-XXL"];
 }
 
+- (void)testRoundThreeVisualFixDark {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary", @"--codexpad-show-all-features"]];
+    [self exerciseRoundThreeVisualFix:app name:@"round3-visual-fix-11-inch-dark"];
+}
+
+- (void)testRoundThreeVisualFixNarrow {
+    XCUIDevice.sharedDevice.orientation = UIDeviceOrientationLandscapeLeft;
+    XCUIApplication *app = [self launchDemo:@[@"--codexpad-touch-mode", @"--codexpad-demo-auxiliary", @"--codexpad-show-all-features", @"--codexpad-demo-width=600"]];
+    XCTAssertEqualWithAccuracy([self roundTwoElement:@"codexpad.workspace" inApp:app].frame.size.width, 600, 5,
+        @"Use the actual measured hosting container, not a screenshot crop");
+    [self exerciseRoundThreeVisualFix:app name:@"round3-visual-fix-simulated-600pt-XXL"];
+}
+
+- (void)exerciseRoundThreeVisualFix:(XCUIApplication *)app name:(NSString *)name {
+    // Only real Settings navigation and catalog selection are exercised here.
+    // Composer, authentication, retries and server requests remain untouched.
+    [self openRoundThreeSettings:app];
+    XCTAssertEqualObjects(app.switches[@"codexpad.desktop-mode"].value, @"0");
+    XCTAssertEqualObjects(app.switches[@"codexpad.touch-show-all"].value, @"1");
+    [self attachScreen:[name stringByAppendingString:@"-settings-initial"]];
+
+    XCUIElement *settings = [self roundTwoElement:@"codexpad.settings-screen" inApp:app];
+    XCUIElement *scroller = settings.scrollViews.firstMatch;
+    if (!scroller.exists) scroller = settings.collectionViews.firstMatch;
+    if (!scroller.exists) scroller = settings.tables.firstMatch;
+    XCTAssertTrue(scroller.exists, @"Scroll the presented Settings form");
+    [scroller swipeUpWithVelocity:XCUIGestureVelocitySlow];
+    [self assertRoundThreeSettingsTitle:app];
+    [self attachScreen:[name stringByAppendingString:@"-settings-scrolled"]];
+    [self tapRoundThreeDone:app];
+    XCTAssertTrue([settings waitForNonExistenceWithTimeout:5]);
+    [self openRoundThreeSettings:app];
+    [self attachScreen:[name stringByAppendingString:@"-settings-reopened"]];
+
+    [self openRoundThreeFeaturesFromSettings:app];
+    XCUIElement *search = app.textFields[@"codexpad.feature-search"];
+    XCTAssertTrue([search waitForExistenceWithTimeout:5]);
+    XCTAssertTrue(search.isHittable);
+    [search tap];
+    [search typeText:@"thread/list"];
+    XCTAssertTrue([app.keyboards.firstMatch waitForExistenceWithTimeout:5]);
+    XCUIElement *feature = [self roundTwoElement:@"codexpad.feature.thread/list" inApp:app];
+    XCTAssertTrue([feature waitForExistenceWithTimeout:5]);
+    XCUIElement *catalog = [self roundTwoElement:@"codexpad.feature-catalog" inApp:app];
+    XCUIElement *catalogScroller = catalog.collectionViews.firstMatch;
+    if (!catalogScroller.exists) catalogScroller = catalog.scrollViews.firstMatch;
+    if (!catalogScroller.exists) catalogScroller = catalog.tables.firstMatch;
+    XCTAssertTrue(catalogScroller.exists);
+    [self revealRoundThreeElement:feature scroller:catalogScroller forward:YES inApp:app];
+    XCTAssertFalse([self roundTwoElement:@"codexpad.feature.fs/readFile" inApp:app].exists,
+        @"The real search must filter a nonmatching operation");
+    XCTAssertTrue(app.keyboards.firstMatch.exists, @"Keep the actual keyboard visible for the filtered-row screenshot");
+    // This original screenshot is also reviewed for icon clipping/overlap.
+    // Accessibility frames do not establish pixel-level visual correctness.
+    [self attachScreen:[name stringByAppendingString:@"-feature-search"]];
+    [feature tap];
+    XCTAssertTrue([app.textViews[@"JSON parameters for thread/list"] waitForExistenceWithTimeout:5]);
+    XCTAssertTrue(app.staticTexts[@"thread/list"].exists);
+    [self attachScreen:[name stringByAppendingString:@"-feature-detail"]];
+}
+
 - (void)exerciseRoundThreeAuxiliary:(XCUIApplication *)app name:(NSString *)name focus:(BOOL)focus {
     XCUIElement *banner = [self roundTwoElement:@"codexpad.error-banner" inApp:app];
     XCTAssertTrue([banner waitForExistenceWithTimeout:5]);
@@ -610,6 +674,33 @@
     XCTAssertNotNil(settings);
     [settings tap];
     XCTAssertTrue([app.switches[@"codexpad.desktop-mode"] waitForExistenceWithTimeout:5]);
+    [self assertRoundThreeSettingsTitle:app];
+}
+
+- (void)assertRoundThreeSettingsTitle:(XCUIApplication *)app {
+    XCUIElement *bar = app.navigationBars[@"Settings"];
+    BOOL foundBar = [bar waitForExistenceWithTimeout:5];
+    XCUIElement *title = [bar.staticTexts matchingPredicate:[NSPredicate predicateWithFormat:@"label == %@", @"Settings"]].firstMatch;
+    BOOL foundTitle = foundBar && [title waitForExistenceWithTimeout:5];
+    XCUIElement *done = bar.buttons[@"codexpad.settings-done"];
+    BOOL foundDone = foundBar && [done waitForExistenceWithTimeout:5];
+    if (!foundBar || !foundTitle || !foundDone) {
+        [self attachScreen:@"round3-visual-fix-settings-title-missing"];
+        XCTAttachment *tree = [XCTAttachment attachmentWithString:app.debugDescription];
+        tree.name = @"round3-visual-fix-settings-title-accessibility-tree";
+        tree.lifetime = XCTAttachmentLifetimeKeepAlways;
+        [self addAttachment:tree];
+    }
+    XCTAssertTrue(foundBar, @"Require the presented native Settings navigation bar");
+    XCTAssertTrue(foundTitle, @"The real native Settings title must be exposed");
+    XCTAssertTrue(foundDone);
+    CGRect titleFrame = title.frame;
+    XCTAssertGreaterThan(titleFrame.size.width, 0);
+    XCTAssertGreaterThan(titleFrame.size.height, 0);
+    XCTAssertTrue(CGRectContainsRect(bar.frame, titleFrame), @"Native title frame %@ must be inside navigation bar %@",
+        NSStringFromCGRect(titleFrame), NSStringFromCGRect(bar.frame));
+    XCTAssertFalse(CGRectIntersectsRect(titleFrame, done.frame), @"Settings title must not overlap the real Done action");
+    // Screenshots still require visual review: AX geometry is not pixel proof.
 }
 
 - (void)tapRoundThreeDone:(XCUIApplication *)app {
@@ -632,6 +723,7 @@
     XCTAssertTrue(scroller.exists, @"Use the presented native Settings form, not a list behind the sheet");
     XCUIElement *open = app.buttons[@"codexpad.open-feature-center"];
     [self revealRoundThreeElement:open scroller:scroller forward:YES inApp:app];
+    [self assertRoundThreeSettingsTitle:app];
     [open tap];
     XCTAssertTrue([[self roundTwoElement:@"codexpad.feature-center" inApp:app] waitForExistenceWithTimeout:5]);
     XCTAssertTrue([settings waitForNonExistenceWithTimeout:5], @"Complete Settings dismissal before the next sheet");

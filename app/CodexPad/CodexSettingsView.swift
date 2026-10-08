@@ -60,6 +60,7 @@ struct CodexSettingsView: View {
                     .accessibilityHidden(true)
             }
             .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button { dismiss() } label: {

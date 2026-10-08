@@ -238,12 +238,15 @@ struct CodexFeatureCenterView: View {
 
 private struct FeatureCatalogRow: View {
     let feature: CodexFeatureDefinition
+    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 20
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: feature.category.symbol)
+                .font(.system(size: iconSize))
                 .foregroundStyle(feature.access == .incompatible ? CodexPalette.secondaryInk : CodexPalette.cobalt)
-                .frame(width: 22)
+                .fixedSize()
+                .frame(minWidth: iconSize * 1.5, alignment: .center)
                 .padding(.top, 3)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 5) {
