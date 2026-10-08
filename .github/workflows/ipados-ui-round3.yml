@@ -13,6 +13,7 @@ on:
           - light
           - dark
           - narrow
+          - dark-narrow
   push:
     branches: [codex/ui-round3]
     paths:
@@ -34,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        profile: ${{ fromJSON(inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["light","dark","narrow"]') }}
+        profile: ${{ fromJSON(inputs.profile == 'dark-narrow' && '["dark","narrow"]' || inputs.profile && inputs.profile != 'all' && format('["{0}"]', inputs.profile) || '["light","dark","narrow"]') }}
     env:
       PROFILE: ${{ matrix.profile }}
       APPEARANCE: ${{ matrix.profile == 'light' && 'light' || 'dark' }}

@@ -14,8 +14,10 @@ selection JSON does not describe the eventual execution state.
 
 The first push touching the round-3 workflow, CodexPad UI source, or native
 UITests on `codex/ui-round3` runs one three-job matrix. Manual `profile` inputs
-are `all`, `light`, `dark`, and `narrow`; use a single failed profile for any
+are `all`, `light`, `dark`, `narrow`, and `dark-narrow`; use a single failed profile for any
 necessary retry instead of repeating passed jobs.
+`dark-narrow` runs those two jobs together after the full light flow passes,
+without concurrency cancellation between separate workflow runs on this branch.
 
 - `light` / `testRoundThreeLight`: Settings touch-mode and show-all bindings;
   Settings-to-Feature-Center handoff; actual catalog search, detail, Back,
